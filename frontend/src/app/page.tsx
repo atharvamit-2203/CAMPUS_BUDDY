@@ -1,5 +1,8 @@
 ﻿"use client";
 
+// Disable static pre-rendering to avoid build-time access of browser APIs
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect } from 'react';
 
 // =====================================================================
