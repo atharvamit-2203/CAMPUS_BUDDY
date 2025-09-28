@@ -1,0 +1,29 @@
+# Ignore everything not needed for backend Docker builds
+.git
+.gitignore
+**/.git
+**/.gitignore
+
+# Node / frontend artifacts
+node_modules
+**/node_modules
+frontend/
+**/build
+**/.next
+**/out
+**/.vercel
+
+# Python caches and venvs
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+backend/venv/
+venv/
+.env
+backend/.env
+
+# OS
+.DS_Store
+Thumbs.db
