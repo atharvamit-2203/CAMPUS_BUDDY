@@ -48,6 +48,17 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# Simple health endpoint to verify service and DB connectivity
+@app.get("/health")
+async def health():
+    from database import test_connection
+    db_ok = False
+    try:
+        db_ok = test_connection()
+    except Exception:
+        db_ok = False
+    return {"status": "ok", "db": db_ok}
+
 # Include AI routers (if available)
 try:
     from ai_endpoints import ai_router as advanced_ai_router
