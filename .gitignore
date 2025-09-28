@@ -117,6 +117,9 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
+# Ignore stale local copy of previously used submodule
+frontend/campus-solutions/
+
 # Test files and temporary scripts
 **/test_*.py
 **/simple_*.py
