@@ -27,6 +27,9 @@ interface NavigationProps {
   currentPage: string;
 }
 
+import dynamic from 'next/dynamic';
+const GlobalChatbot = dynamic(() => import('./GlobalChatbot'), { ssr: false });
+
 const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
   const { user, logout } = useAuth();
 
@@ -42,7 +45,7 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
           { href: '/dashboard/student/events', label: 'Events', icon: Calendar },
           { href: '/dashboard/student/networking', label: 'Networking', icon: Users },
           { href: '/dashboard/student/skills', label: 'Skills', icon: Target },
-{ href: '/dashboard/student/organizations', label: 'Organizations', icon: Users },
+          { href: '/dashboard/student/organizations', label: 'Organizations', icon: Users },
           { href: '/dashboard/student/resources', label: 'Resources', icon: BookOpen },
           { href: '/dashboard/student/canteen', label: 'Canteen', icon: Coffee },
         ];
@@ -135,12 +138,10 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
           <LogOut className="w-5 h-5" />
           <span className="font-medium">Logout</span>
         </button>
-</div>
+      </div>
       <GlobalChatbot />
-  import dynamic from 'next/dynamic';
-const GlobalChatbot = dynamic(()=>import('./GlobalChatbot'), { ssr: false });
+    </div>
+  );
+};
 
-export default RoleBasedNavigation;
-m 'next/dynamic'
-const _noop = null
 export default RoleBasedNavigation;

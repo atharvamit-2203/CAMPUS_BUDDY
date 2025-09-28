@@ -9,8 +9,12 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export default function CanteenPaymentPage() {
   const [paying, setPaying] = React.useState(false);
   const [done, setDone] = React.useState<any | null>(null);
-  const amount = React.useMemo(() => Number(localStorage.getItem('canteen_amount') || '0'), []);
+  const amount = React.useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    return Number(localStorage.getItem('canteen_amount') || '0');
+  }, []);
   const cart = React.useMemo(() => {
+    if (typeof window === 'undefined') return [] as any[];
     try { return JSON.parse(localStorage.getItem('canteen_cart') || '[]'); } catch { return []; }
   }, []);
 
@@ -22,7 +26,7 @@ export default function CanteenPaymentPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('authToken')}`
+          Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}`
         },
         body: JSON.stringify({ items: cart, total_amount: amount, payment_method: 'pay_now', payment_status: 'paid' })
       });

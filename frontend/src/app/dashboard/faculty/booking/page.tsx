@@ -107,72 +107,7 @@ useEffect(() => {
           location: r.building ? `${r.building}` : 'Campus',
           isAvailable: true
         }));
-        setRooms(mappedRooms);
-          {
-            id: 1,
-            name: 'Room 301',
-            type: 'classroom',
-            capacity: 60,
-            facilities: ['Projector', 'Whiteboard', 'AC', 'WiFi'],
-            location: 'Block A, 3rd Floor',
-            isAvailable: true
-          },
-          {
-            id: 2,
-            name: 'Computer Lab 1',
-            type: 'lab',
-            capacity: 40,
-            facilities: ['Computers', 'Projector', 'AC', 'WiFi', 'Software'],
-            location: 'Block B, 2nd Floor',
-            isAvailable: false,
-            currentBooking: {
-              faculty: 'Dr. Smith',
-              subject: 'Web Development',
-              time: '10:00 AM - 12:00 PM'
-            }
-          },
-          {
-            id: 3,
-            name: 'Auditorium A',
-            type: 'auditorium',
-            capacity: 200,
-            facilities: ['Sound System', 'Projector', 'Stage', 'AC', 'WiFi'],
-            location: 'Ground Floor',
-            isAvailable: true
-          },
-          {
-            id: 4,
-            name: 'Conference Room B',
-            type: 'conference',
-            capacity: 25,
-            facilities: ['Video Conferencing', 'Smart Board', 'AC', 'WiFi'],
-            location: 'Block C, 1st Floor',
-            isAvailable: true
-          },
-          {
-            id: 5,
-            name: 'Physics Lab',
-            type: 'lab',
-            capacity: 30,
-            facilities: ['Equipment', 'Safety', 'Projector', 'AC'],
-            location: 'Block D, 2nd Floor',
-            isAvailable: true
-          },
-          {
-            id: 6,
-            name: 'Room 205',
-            type: 'classroom',
-            capacity: 45,
-            facilities: ['Projector', 'Whiteboard', 'AC', 'WiFi'],
-            location: 'Block A, 2nd Floor',
-            isAvailable: false,
-            currentBooking: {
-              faculty: 'Prof. Johnson',
-              subject: 'Database Systems',
-              time: '02:00 PM - 03:30 PM'
-            }
-          }
-        ];
+setRooms(mappedRooms);
 
         // Mock bookings data
         const mockBookings: Booking[] = [
