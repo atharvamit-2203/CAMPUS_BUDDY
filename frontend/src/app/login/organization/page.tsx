@@ -68,7 +68,7 @@ export default function OrganizationLogin() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Organization Account</h1>
               <p className="text-gray-600 mb-8">Join our community network!</p>
-              <RegisterForm onSuccess={handleRegisterSuccess} onSwitchView={() => switchView(AuthView.Login)} />
+<RegisterForm userType="organization" onSuccess={handleRegisterSuccess} onSwitchView={() => switchView(AuthView.Login)} />
             </div>
           )}
         </div>

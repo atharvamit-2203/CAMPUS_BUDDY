@@ -85,7 +85,7 @@ export default function StudentLogin() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create an account</h1>
               <p className="text-gray-600 mb-8">Let&apos;s get you started!</p>
-              <RegisterForm onSuccess={handleRegisterSuccess} onSwitchView={() => switchView(AuthView.Login)} />
+<RegisterForm userType="student" onSuccess={handleRegisterSuccess} onSwitchView={() => switchView(AuthView.Login)} />
             </div>
           )}
         </div>
