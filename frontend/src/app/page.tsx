@@ -699,27 +699,36 @@ const ContactPage = () => {
 // App Component - The Router
 // =====================================================================
 const App: React.FC = () => {
-  const [route, setRoute] = useState(window.location.hash);
+  // Do not access window during initial render (SSR). Initialize empty, set in effect.
+  const [route, setRoute] = useState<string>('');
 
   useEffect(() => {
     const handleHashChange = () => {
-      const newHash = window.location.hash;
+      const newHash = typeof window !== 'undefined' ? window.location.hash : '#';
       setRoute(newHash);
       // Only scroll to top on "page" changes (e.g., #/about), not on-page anchor links (e.g., #features)
-      if (newHash.startsWith('#/')) {
+      if (typeof window !== 'undefined' && newHash.startsWith('#/')) {
         window.scrollTo(0, 0);
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    
-    // Initial scroll check for when the page loads directly on a sub-page
-    if (window.location.hash.startsWith('#/')) {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('hashchange', handleHashChange);
+
+      // Initialize route on mount
+      const initialHash = window.location.hash || '#';
+      setRoute(initialHash);
+
+      // Initial scroll check for when the page loads directly on a sub-page
+      if (initialHash.startsWith('#/')) {
         window.scrollTo(0, 0);
+      }
     }
 
     return () => {
-      window.removeEventListener('hashchange', handleHashChange);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('hashchange', handleHashChange);
+      }
     };
   }, []);
 
