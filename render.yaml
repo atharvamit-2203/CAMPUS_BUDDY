@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: campus-buddy-backend
+    env: docker
+    autoDeploy: true
+    plan: free
+    healthCheckPath: /health
+    # The Dockerfile at the repository root builds the backend from backend/
+    # No build/start commands are needed; Dockerfile handles them.
+    envVars:
+      # Paste your MySQL connection string in Render UI after creating the service:
+      # Format: mysql://USERNAME:PASSWORD@HOST:3306/DATABASE
+      - key: DATABASE_URL
+      # Strong random string for JWT signing
+      - key: SECRET_KEY
+      # Optional: tighten CORS to your frontend origin (otherwise CORS is *)
+      # - key: PUBLIC_FRONTEND_ORIGIN
+      #   value: https://<your-vercel-app>.vercel.app
