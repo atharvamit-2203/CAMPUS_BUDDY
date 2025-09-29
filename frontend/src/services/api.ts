@@ -1,5 +1,6 @@
 // Campus Connect API Service using native fetch
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Default to Render backend URL if env is not set
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://campus-buddy-1.onrender.com';
 
 // Utility function to make API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {

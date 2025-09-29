@@ -1,5 +1,5 @@
 // Enhanced Campus Connect API Service with Role-Based Endpoints
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://campus-buddy-1.onrender.com';
 
 // Utility function to make API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {
