@@ -17,6 +17,14 @@ Base = declarative_base()
 # Create MySQL engine
 def create_mysql_engine():
     try:
+        # Log sanitized config for diagnostics (no password)
+        logger.info(
+            "MySQL config => host=%s port=%s user=%s db=%s",
+            settings.MYSQL_HOST,
+            settings.MYSQL_PORT,
+            settings.MYSQL_USER,
+            settings.MYSQL_DATABASE,
+        )
         mysql_url = f"mysql+mysqlconnector://{settings.MYSQL_USER}:{settings.MYSQL_PASSWORD}@{settings.MYSQL_HOST}:{settings.MYSQL_PORT}/{settings.MYSQL_DATABASE}"
         engine = create_engine(
             mysql_url,
@@ -42,6 +50,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def get_mysql_connection():
     """Get direct MySQL connection for raw SQL queries"""
     try:
+        logger.info(
+            "Connecting to MySQL host=%s port=%s user=%s db=%s",
+            settings.MYSQL_HOST,
+            settings.MYSQL_PORT,
+            settings.MYSQL_USER,
+            settings.MYSQL_DATABASE,
+        )
         connection = mysql.connector.connect(
             host=settings.MYSQL_HOST,
             port=settings.MYSQL_PORT,
@@ -55,7 +70,14 @@ def get_mysql_connection():
         logger.info("✅ Direct MySQL connection established")
         return connection
     except Error as e:
-        logger.error(f"❌ MySQL connection error: {str(e)}")
+        logger.error(
+            "❌ MySQL connection error: %s (host=%s port=%s user=%s db=%s)",
+            str(e),
+            settings.MYSQL_HOST,
+            settings.MYSQL_PORT,
+            settings.MYSQL_USER,
+            settings.MYSQL_DATABASE,
+        )
         raise
 
 # SQLAlchemy session dependency
