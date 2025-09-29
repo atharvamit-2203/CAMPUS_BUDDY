@@ -36,8 +36,25 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
     }
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      const errorData = await response.json().catch(() => ({} as any));
+      // Normalize FastAPI error formats
+      let message = `HTTP error! status: ${response.status}`;
+      if (errorData && errorData.detail) {
+        if (Array.isArray(errorData.detail)) {
+          // Validation errors: [{loc, msg, type}, ...]
+          const msgs = errorData.detail.map((d: any) => d?.msg || (typeof d === 'string' ? d : JSON.stringify(d))).filter(Boolean);
+          if (msgs.length) message = msgs.join('; ');
+        } else if (typeof errorData.detail === 'string') {
+          message = errorData.detail;
+        } else if (typeof errorData.detail === 'object') {
+          message = errorData.detail.message || JSON.stringify(errorData.detail);
+        }
+      } else if (errorData && typeof errorData === 'object') {
+        const candidates = [errorData.message, errorData.error, errorData.title];
+        const found = candidates.find((x) => typeof x === 'string' && x.trim());
+        if (found) message = found as string;
+      }
+      throw new Error(message);
     }
     
     return await response.json();
