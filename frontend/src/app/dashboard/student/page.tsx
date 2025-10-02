@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import CampusMiniMap from '@/components/CampusMiniMap';
@@ -201,8 +202,24 @@ function AllOrganizationsCard() {
 }
 
 export default function StudentDashboard() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading, setIntendedRoute } = useAuth();
+  const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated || !user) {
+      setIntendedRoute('/dashboard/student');
+      router.replace('/login');
+      return;
+    }
+
+    if (user.role !== 'student') {
+      setIntendedRoute('/dashboard/student');
+      router.replace(`/dashboard/${user.role}`);
+    }
+  }, [isAuthenticated, isLoading, router, setIntendedRoute, user]);
 
   // Dynamic dashboard data (no hardcoded mock values)
   const [upcoming, setUpcoming] = useState<any[]>([]);
