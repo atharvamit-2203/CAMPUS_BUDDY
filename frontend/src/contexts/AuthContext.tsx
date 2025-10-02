@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         payload: { 
           user: {
             ...response.user,
-            role: response.user.role as 'student' | 'faculty' | 'organization',
+role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
             created_at: new Date().toISOString()
           }, 
           token: response.access_token 
@@ -128,12 +128,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         payload: { 
           user: { 
             ...response.user, 
-            role: response.user.role as 'student' | 'faculty' | 'organization',
+role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
             created_at: new Date().toISOString() 
           }, 
           token: response.access_token 
         } 
       });
+      // Redirect to dashboard based on role (default student)
+      try {
+        if (typeof window !== 'undefined') {
+          const role = response.user.role;
+          if (role === 'faculty') window.location.href = '/dashboard/faculty';
+          else if (role === 'organization') window.location.href = '/dashboard/organization';
+          else if (role === 'admin') window.location.href = '/dashboard/admin';
+          else window.location.href = '/dashboard/student';
+        }
+      } catch {}
     } catch (error) {
       dispatch({ type: 'SET_LOADING', payload: false });
       throw error;

@@ -124,11 +124,17 @@ def _ensure_notification_tables(cursor):
           category VARCHAR(50) NOT NULL DEFAULT 'system',
           priority VARCHAR(20) NOT NULL DEFAULT 'medium',
           target_role VARCHAR(20) NULL,
+          expires_at DATETIME NULL,
           created_by INT NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """
     )
+    # Try to ensure expires_at exists for older schemas
+    try:
+        cursor.execute("ALTER TABLE notifications ADD COLUMN expires_at DATETIME NULL")
+    except Exception:
+        pass
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS notification_recipients (
@@ -187,6 +193,128 @@ def _ensure_org_memberships(cursor):
     except Exception:
         pass
 
+# Check if a column exists in a table
+def _has_column(cursor, table_name: str, column_name: str) -> bool:
+    try:
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = DATABASE() AND table_name = %s AND column_name = %s
+            LIMIT 1
+            """,
+            (table_name, column_name)
+        )
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+
+# Ensure users table has course and semester columns
+def _ensure_user_course_semester(cursor):
+    # Add columns at the end if missing (avoid AFTER dependency order)
+    try:
+        if not _has_column(cursor, 'users', 'course'):
+            cursor.execute("ALTER TABLE users ADD COLUMN course VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'semester'):
+            cursor.execute("ALTER TABLE users ADD COLUMN semester INT NULL")
+    except Exception:
+        pass
+
+# Ensure users table has preferences json columns
+def _ensure_user_preferences(cursor):
+    try:
+        if not _has_column(cursor, 'users', 'interests_json'):
+            cursor.execute("ALTER TABLE users ADD COLUMN interests_json TEXT NULL AFTER bio")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'skills_json'):
+            cursor.execute("ALTER TABLE users ADD COLUMN skills_json TEXT NULL AFTER interests_json")
+    except Exception:
+        pass
+
+# Ensure college_id column supports up to 15 chars
+def _ensure_user_college_id_text(cursor):
+    try:
+        # Try to modify to VARCHAR(15) if not already
+        cursor.execute("ALTER TABLE users MODIFY COLUMN college_id VARCHAR(15) NULL")
+    except Exception:
+        # If column doesn't exist, add it
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN college_id VARCHAR(15) NULL")
+        except Exception:
+            pass
+
+# Ensure all columns used in /auth/register exist to avoid 42S22 errors
+def _ensure_user_register_columns(cursor):
+    try:
+        if not _has_column(cursor, 'users', 'student_id'):
+            cursor.execute("ALTER TABLE users ADD COLUMN student_id VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'branch'):
+            cursor.execute("ALTER TABLE users ADD COLUMN branch VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'academic_year'):
+            cursor.execute("ALTER TABLE users ADD COLUMN academic_year VARCHAR(20) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'batch'):
+            cursor.execute("ALTER TABLE users ADD COLUMN batch VARCHAR(50) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'employee_id'):
+            cursor.execute("ALTER TABLE users ADD COLUMN employee_id VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'designation'):
+            cursor.execute("ALTER TABLE users ADD COLUMN designation VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'specialization'):
+            cursor.execute("ALTER TABLE users ADD COLUMN specialization VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'organization_type'):
+            cursor.execute("ALTER TABLE users ADD COLUMN organization_type VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'department'):
+            cursor.execute("ALTER TABLE users ADD COLUMN department VARCHAR(100) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'bio'):
+            cursor.execute("ALTER TABLE users ADD COLUMN bio TEXT NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'phone_number'):
+            cursor.execute("ALTER TABLE users ADD COLUMN phone_number VARCHAR(30) NULL")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'is_active'):
+            cursor.execute("ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        if not _has_column(cursor, 'users', 'is_verified'):
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified TINYINT(1) NOT NULL DEFAULT 0")
+    except Exception:
+        pass
+
 # ============================================================================
 # AUTHENTICATION ENDPOINTS
 # ============================================================================
@@ -214,6 +342,12 @@ async def register_user(user: schemas.UserRegister, db = Depends(get_db)):
         # Hash password
         hashed_password = auth.get_password_hash(user.password)
         
+        # Ensure columns exist to avoid 42S22 errors
+        _ensure_user_register_columns(cursor)
+        _ensure_user_course_semester(cursor)
+        _ensure_user_college_id_text(cursor)
+        connection.commit()
+
         # Insert new user
         insert_query = """
             INSERT INTO users (
@@ -238,6 +372,17 @@ async def register_user(user: schemas.UserRegister, db = Depends(get_db)):
         connection.commit()
         user_id = cursor.lastrowid
         
+        # Optionally store interests/skills JSON
+        try:
+            _ensure_user_preferences(cursor)
+            import json as _json
+            interests_json = _json.dumps(user.interests or [])
+            skills_json = _json.dumps(user.skills or [])
+            cursor.execute("UPDATE users SET interests_json = %s, skills_json = %s WHERE id = %s", (interests_json, skills_json, user_id))
+            connection.commit()
+        except Exception:
+            pass
+
         # Get the created user
         cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
         db_user = cursor.fetchone()
@@ -397,6 +542,67 @@ async def get_current_user_info(current_user = Depends(auth.get_current_user)):
     """Get current user information"""
     return current_user
 
+@app.get("/users/{user_id}/details")
+async def get_user_details(user_id: int, current_user = Depends(auth.get_current_user)):
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT id, full_name, email, role, course, semester, department, bio, phone_number, interests_json, skills_json FROM users WHERE id = %s", (user_id,))
+        u = cursor.fetchone()
+        if not u:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Parse json
+        import json as _json
+        interests = []
+        skills_free = []
+        try:
+            if u.get("interests_json"):
+                interests = _json.loads(u.get("interests_json") or "[]")
+        except Exception:
+            interests = []
+        try:
+            if u.get("skills_json"):
+                skills_free = _json.loads(u.get("skills_json") or "[]")
+        except Exception:
+            skills_free = []
+        # Structured skills from student_skills if exists
+        detailed_skills = []
+        try:
+            cursor.execute(
+                """
+                SELECT ss.proficiency_level, s.name AS skill_name, s.category
+                FROM student_skills ss JOIN skills s ON ss.skill_id = s.id
+                WHERE ss.student_id = %s
+                ORDER BY ss.proficiency_level DESC
+                """,
+                (user_id,)
+            )
+            detailed_skills = cursor.fetchall() or []
+        except Exception:
+            detailed_skills = []
+        # If no detailed skills, map free skills into objects
+        if not detailed_skills and skills_free:
+            detailed_skills = [{"skill_name": sk, "category": "", "proficiency_level": ""} for sk in skills_free]
+        # Build response
+        return {
+            "user": {
+                "id": u["id"],
+                "full_name": u.get("full_name"),
+                "email": u.get("email"),
+                "role": u.get("role"),
+                "course": u.get("course"),
+                "semester": u.get("semester"),
+                "department": u.get("department"),
+                "bio": u.get("bio"),
+                "phone_number": u.get("phone_number"),
+            },
+            "interests": interests,
+            "skills": detailed_skills,
+        }
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
 @app.get("/auth/get-sample-users")
 async def get_sample_users(db = Depends(get_db)):
     """Get sample users for testing (faculty and students)"""
@@ -448,6 +654,111 @@ async def list_organizations(current_user = Depends(auth.get_current_user)):
         if 'cursor' in locals(): cursor.close()
         if 'connection' in locals(): connection.close()
 
+# Detailed organizations list for students and other roles
+@app.get("/organizations/detailed")
+async def organizations_detailed(current_user = Depends(auth.get_current_user)):
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_org_memberships(cursor)
+        # Base org list
+        cursor.execute(
+            """
+            SELECT od.id, od.organization_name, od.description, od.user_id as owner_user_id
+            FROM organization_details od
+            ORDER BY od.organization_name
+            """
+        )
+        orgs = cursor.fetchall() or []
+        ids = [o["id"] for o in orgs]
+        if not ids:
+            return []
+        # Heads
+        for o in orgs:
+            try:
+                cursor.execute("SELECT full_name, email FROM users WHERE id = %s", (o["owner_user_id"],))
+                head = cursor.fetchone() or {}
+                o["head"] = {"name": head.get("full_name"), "email": head.get("email")}
+            except Exception:
+                o["head"] = {"name": None, "email": None}
+        # Member counts, departments, and current user's membership status
+        current_user_id = current_user.get("id")
+        for o in orgs:
+            cursor.execute("SELECT COUNT(*) AS c FROM organization_memberships WHERE organization_id = %s", (o["id"],))
+            o["member_count"] = (cursor.fetchone() or {}).get("c", 0)
+            
+            # Check current user's membership status
+            if current_user_id:
+                try:
+                    cursor.execute(
+                        "SELECT status FROM organization_memberships WHERE organization_id = %s AND user_id = %s",
+                        (o["id"], current_user_id)
+                    )
+                    membership_row = cursor.fetchone()
+                    o["membership_status"] = membership_row["status"] if membership_row else None
+                except Exception:
+                    o["membership_status"] = None
+            else:
+                o["membership_status"] = None
+            
+            departments = []
+            try:
+                if _has_column(cursor, "users", "department"):
+                    cursor.execute(
+                        """
+                        SELECT DISTINCT COALESCE(u.department, '') AS dept
+                        FROM organization_memberships om
+                        JOIN users u ON u.id = om.user_id
+                        WHERE om.organization_id = %s AND u.department IS NOT NULL AND u.department <> ''
+                        ORDER BY dept
+                        """,
+                        (o["id"],)
+                    )
+                    departments = [r["dept"] for r in (cursor.fetchall() or [])]
+            except Exception:
+                departments = []
+            o["departments"] = departments
+        # Recent activities from events if table exists
+        activities_supported = True
+        try:
+            cursor.execute("SELECT 1 FROM events LIMIT 1")
+            # consume result to avoid unread result error on close
+            _ = cursor.fetchone()
+        except Exception:
+            activities_supported = False
+        if activities_supported:
+            for o in orgs:
+                try:
+                    cursor.execute(
+                        """
+                        SELECT title, event_date, start_time
+                        FROM events
+                        WHERE organizer_id = %s
+                        ORDER BY event_date DESC, start_time DESC
+                        LIMIT 5
+                        """,
+                        (o["owner_user_id"],)
+                    )
+                    acts = cursor.fetchall() or []
+                    # Normalize
+                    o["activities"] = [
+                        {
+                            "title": a.get("title"),
+                            "date": str(a.get("event_date")) if a.get("event_date") is not None else None,
+                            "start_time": str(a.get("start_time")) if a.get("start_time") is not None else None,
+                        }
+                        for a in acts
+                    ]
+                except Exception:
+                    o["activities"] = []
+        else:
+            for o in orgs:
+                o["activities"] = []
+        return orgs
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
 @app.post("/organizations/{org_id}/join")
 async def join_organization(org_id: int, current_user = Depends(auth.get_current_user)):
     if current_user.get("role") != "student":
@@ -467,7 +778,7 @@ async def join_organization(org_id: int, current_user = Depends(auth.get_current
         # Robust insert that tolerates different schema definitions of `status`
         try:
             cursor.execute(
-                "INSERT INTO organization_memberships (organization_id, user_id, status) VALUES (%s, %s, 'member')",
+                "INSERT INTO organization_memberships (organization_id, user_id, status) VALUES (%s, %s, 'pending')",
                 (org_id, current_user["id"]))
             connection.commit()
         except Exception:
@@ -530,12 +841,15 @@ async def my_org_members(
                 params.extend(statuses)
         else:
             # Default: only active members (treat NULL as active)
-            where += " AND (om.status IN ('member','approved','selected') OR om.status IS NULL)"
+            where += " AND (om.status IN ('active','member') OR om.status IS NULL)"
+        # Dynamically include optional user columns if present
+        opt_cols = []
+        for col in ["course", "semester", "department", "bio"]:
+            if _has_column(cursor, "users", col):
+                opt_cols.append(f"u.{col} AS {col}")
+        select_cols = ["u.id", "u.full_name", "u.email"] + opt_cols + ["om.joined_at", "om.status"]
         query = f"""
-            SELECT u.id, u.full_name, u.email,
-                   u.course AS course, u.semester AS semester,
-                   u.department AS department, u.bio AS bio,
-                   om.joined_at, om.status
+            SELECT {', '.join(select_cols)}
             FROM organization_memberships om
             JOIN users u ON u.id = om.user_id
             {where}
@@ -567,12 +881,15 @@ async def organization_members(
                 where += f" AND om.status IN ({placeholders})"
                 params.extend(statuses)
         else:
-            where += " AND (om.status IN ('member','approved','selected') OR om.status IS NULL)"
+            where += " AND (om.status IN ('active','member') OR om.status IS NULL)"
+        # Dynamically include optional user columns if present
+        opt_cols = []
+        for col in ["course", "semester", "department", "bio"]:
+            if _has_column(cursor, "users", col):
+                opt_cols.append(f"u.{col} AS {col}")
+        select_cols = ["u.id", "u.full_name", "u.email"] + opt_cols + ["om.joined_at", "om.status"]
         query = f"""
-            SELECT u.id, u.full_name, u.email,
-                   u.course AS course, u.semester AS semester,
-                   u.department AS department, u.bio AS bio,
-                   om.joined_at, om.status
+            SELECT {', '.join(select_cols)}
             FROM organization_memberships om
             JOIN users u ON u.id = om.user_id
             {where}
@@ -647,7 +964,7 @@ async def my_org_stats(current_user = Depends(auth.get_current_user)):
         org_id = row["id"]
         # members (only active)
         cursor.execute(
-            "SELECT COUNT(*) AS c FROM organization_memberships WHERE organization_id = %s AND (status IN ('member','approved','selected') OR status IS NULL)",
+            "SELECT COUNT(*) AS c FROM organization_memberships WHERE organization_id = %s AND (status IN ('active','member') OR status IS NULL)",
             (org_id,)
         )
         members = cursor.fetchone().get("c", 0)
@@ -680,6 +997,46 @@ async def get_colleges(db = Depends(get_db)):
             cursor.close()
         if 'connection' in locals():
             connection.close()
+
+# Maintenance endpoint: backfill student course and semester
+@app.post("/admin/backfill-students-course-semester")
+async def backfill_students_course_semester(current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_user_course_semester(cursor)
+        # Assign courses in a simple round-robin based on id
+        cursor.execute(
+            """
+            UPDATE users SET course = CASE (id % 3)
+              WHEN 0 THEN 'MBA TECH'
+              WHEN 1 THEN 'B TECH CE'
+              ELSE 'B TECH AIDS' END
+            WHERE role = 'student' AND (course IS NULL OR course = '')
+            """
+        )
+        affected_course = cursor.rowcount
+        # Assign semesters in a simple round-robin among 1,3,5,7
+        cursor.execute(
+            """
+            UPDATE users SET semester = CASE (id % 4)
+              WHEN 0 THEN 1
+              WHEN 1 THEN 3
+              WHEN 2 THEN 5
+              ELSE 7 END
+            WHERE role = 'student' AND (semester IS NULL OR semester = 0)
+            """
+        )
+        affected_sem = cursor.rowcount
+        connection.commit()
+        return {"status": "ok", "updated_course": affected_course, "updated_semester": affected_sem}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
 
 @app.get("/clubs")
 async def get_clubs(current_user = Depends(auth.get_current_user), db = Depends(get_db)):
@@ -1651,6 +2008,40 @@ def _ensure_canteen_tables(cursor):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """
     )
+    # Ensure canteen menu items table exists
+    try:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS canteen_menu_items (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              name VARCHAR(200) NOT NULL,
+              description TEXT NULL,
+              price DECIMAL(10,2) NOT NULL DEFAULT 0,
+              category VARCHAR(100) NOT NULL DEFAULT 'General',
+              is_vegetarian TINYINT(1) NOT NULL DEFAULT 0,
+              is_available TINYINT(1) NOT NULL DEFAULT 1
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+    except Exception:
+        pass
+    # Ensure canteen menu assets (binary uploads)
+    try:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS canteen_menu_assets (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              file_name VARCHAR(255) NOT NULL,
+              mime_type VARCHAR(100) NOT NULL,
+              content LONGBLOB NOT NULL,
+              uploaded_by INT NOT NULL,
+              active TINYINT(1) NOT NULL DEFAULT 1,
+              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+    except Exception:
+        pass
 
 from secrets import token_hex
 
@@ -1758,10 +2149,14 @@ async def canteen_scan(payload: dict, current_user = Depends(auth.get_current_us
             raise HTTPException(status_code=404, detail="Order not found")
         if order.get("status") == "served":
             return {"valid": False, "message": "Already served"}
-        # Mark served
-        cursor.execute("UPDATE canteen_orders SET status = 'served' WHERE id = %s", (order["id"],))
+        # Mark served and paid
+        try:
+            cursor.execute("UPDATE canteen_orders SET status = 'served', payment_status = 'paid' WHERE id = %s", (order["id"],))
+        except Exception:
+            # Fallback if payment_status column not used in this schema
+            cursor.execute("UPDATE canteen_orders SET status = 'served' WHERE id = %s", (order["id"],))
         connection.commit()
-        return {"valid": True, "message": "Order verified and marked served", "order_id": order["id"]}
+        return {"valid": True, "message": "Order verified, paid and marked served", "order_id": order["id"]}
     finally:
         if 'cursor' in locals(): cursor.close()
         if 'connection' in locals(): connection.close()
@@ -1770,16 +2165,77 @@ async def canteen_scan(payload: dict, current_user = Depends(auth.get_current_us
 # CANTEEN MANAGEMENT ENDPOINTS
 # ============================================================================
 
-@app.get("/canteen/menu")
-async def get_canteen_menu(db = Depends(get_db)):
-    """Get canteen menu"""
+from fastapi import UploadFile, File
+from fastapi.responses import StreamingResponse
+
+@app.post("/canteen/menu/upload")
+async def upload_canteen_menu(file: UploadFile = File(...), current_user = Depends(auth.get_current_user)):
+    """Upload canteen menu (image/pdf). Store content in DB and mark latest."""
+    if current_user.get("role") not in ["admin", "faculty"]:
+        raise HTTPException(status_code=403, detail="Only admin/faculty can upload menu")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
     try:
         connection = get_mysql_connection()
         cursor = connection.cursor(dictionary=True)
-        
+        _ensure_canteen_tables(cursor)
+        # Deactivate previous assets
+        try:
+            cursor.execute("UPDATE canteen_menu_assets SET active = 0 WHERE active = 1")
+        except Exception:
+            pass
+        cursor.execute(
+            """
+            INSERT INTO canteen_menu_assets (file_name, mime_type, content, uploaded_by, active)
+            VALUES (%s, %s, %s, %s, 1)
+            """,
+            (file.filename or 'menu', file.content_type or 'application/octet-stream', content, current_user["id"])
+        )
+        connection.commit()
+        return {"id": cursor.lastrowid, "file_name": file.filename, "mime_type": file.content_type}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/canteen/menu/latest-asset")
+async def get_latest_canteen_menu_asset(current_user = Depends(auth.get_current_user)):
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        cursor.execute("SELECT id, file_name, mime_type, created_at FROM canteen_menu_assets WHERE active = 1 ORDER BY created_at DESC LIMIT 1")
+        row = cursor.fetchone()
+        return {"asset": row}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/canteen/menu/assets/{asset_id}/content")
+async def stream_canteen_menu_asset(asset_id: int, current_user = Depends(auth.get_current_user)):
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor()
+        _ensure_canteen_tables(cursor)
+        cursor.execute("SELECT mime_type, content FROM canteen_menu_assets WHERE id = %s", (asset_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        mime, content = row
+        return StreamingResponse(iter([content]), media_type=mime)
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/canteen/menu")
+async def get_canteen_menu(db = Depends(get_db)):
+    """Get canteen menu and include latest uploaded asset metadata if present"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
         cursor.execute("SELECT * FROM canteen_menu_items WHERE is_available = TRUE ORDER BY category, name")
         menu_items = cursor.fetchall()
-        
         # Group by category
         menu_by_category = {}
         for item in menu_items:
@@ -1787,10 +2243,55 @@ async def get_canteen_menu(db = Depends(get_db)):
             if category not in menu_by_category:
                 menu_by_category[category] = []
             menu_by_category[category].append(item)
-        
-        return {"menu": menu_by_category, "items": menu_items}
+        # Latest active asset
+        latest_asset = None
+        try:
+            cursor.execute("SELECT id, file_name, mime_type, created_at FROM canteen_menu_assets WHERE active = 1 ORDER BY created_at DESC LIMIT 1")
+            latest_asset = cursor.fetchone()
+        except Exception:
+            latest_asset = None
+        resp = {"menu": menu_by_category, "items": menu_items}
+        if latest_asset:
+            resp["latest_asset"] = latest_asset
+        return resp
     except mysql.connector.Error as e:
         return {"menu": {}, "items": [], "error": str(e)}
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+@app.get("/canteen/menu/categories")
+async def get_menu_categories():
+    """Get all available menu categories"""
+    categories = [
+        {"id": "breakfast", "name": "Breakfast", "icon": "☕", "description": "Morning meals and beverages"},
+        {"id": "lunch", "name": "Lunch", "icon": "🍽️", "description": "Afternoon main courses"},
+        {"id": "dinner", "name": "Dinner", "icon": "🌙", "description": "Evening meals"},
+        {"id": "snacks", "name": "Snacks", "icon": "🍪", "description": "Light snacks and appetizers"},
+        {"id": "beverages", "name": "Beverages", "icon": "🥤", "description": "Drinks and refreshments"},
+        {"id": "desserts", "name": "Desserts", "icon": "🍰", "description": "Sweet treats and desserts"}
+    ]
+    return {"categories": categories}
+
+@app.get("/canteen/menu/by-category/{category}")
+async def get_menu_by_category(category: str):
+    """Get menu items by specific category"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        cursor.execute(
+            "SELECT * FROM canteen_menu_items WHERE category = %s AND is_available = TRUE ORDER BY name",
+            (category,)
+        )
+        items = cursor.fetchall()
+        
+        return {"category": category, "items": items}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:
         if 'cursor' in locals():
             cursor.close()
@@ -1806,6 +2307,7 @@ async def add_menu_item(item_data: schemas.MenuItemCreate, current_user = Depend
     try:
         connection = get_mysql_connection()
         cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
         
         cursor.execute(
             """
@@ -1823,6 +2325,135 @@ async def add_menu_item(item_data: schemas.MenuItemCreate, current_user = Depend
         item = cursor.fetchone()
         
         return item
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+@app.put("/canteen/menu/{item_id}")
+async def update_menu_item(item_id: int, item_data: dict, current_user = Depends(auth.get_current_user)):
+    """Update menu item (Admin only)"""
+    if current_user.get("role") not in ["admin", "faculty"]:
+        raise HTTPException(status_code=403, detail="Only admin and faculty can update menu items")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        # Build dynamic update query
+        update_fields = []
+        update_values = []
+        
+        allowed_fields = ['name', 'description', 'price', 'category', 'is_vegetarian', 'is_available']
+        
+        for field in allowed_fields:
+            if field in item_data:
+                update_fields.append(f"{field} = %s")
+                update_values.append(item_data[field])
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        
+        update_values.append(item_id)
+        query = f"UPDATE canteen_menu_items SET {', '.join(update_fields)} WHERE id = %s"
+        
+        cursor.execute(query, update_values)
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Menu item not found")
+        
+        # Return updated item
+        cursor.execute("SELECT * FROM canteen_menu_items WHERE id = %s", (item_id,))
+        updated_item = cursor.fetchone()
+        
+        return {"message": "Menu item updated successfully", "item": updated_item}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+@app.delete("/canteen/menu/{item_id}")
+async def delete_menu_item(item_id: int, current_user = Depends(auth.get_current_user)):
+    """Delete menu item (Admin only)"""
+    if current_user.get("role") not in ["admin", "faculty"]:
+        raise HTTPException(status_code=403, detail="Only admin and faculty can delete menu items")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        cursor.execute("DELETE FROM canteen_menu_items WHERE id = %s", (item_id,))
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Menu item not found")
+        
+        return {"message": "Menu item deleted successfully"}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+@app.get("/canteen/menu/verify-visibility")
+async def verify_menu_visibility(current_user = Depends(auth.get_current_user)):
+    """Verify that uploaded menu is visible across all roles"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        # Check total menu items
+        cursor.execute("SELECT COUNT(*) as total_items FROM canteen_menu_items WHERE is_available = TRUE")
+        total_items = cursor.fetchone()["total_items"]
+        
+        # Check items by category
+        cursor.execute(
+            """
+            SELECT category, COUNT(*) as count 
+            FROM canteen_menu_items 
+            WHERE is_available = TRUE 
+            GROUP BY category 
+            ORDER BY category
+            """
+        )
+        categories = cursor.fetchall()
+        
+        # Check latest uploaded asset
+        cursor.execute(
+            """
+            SELECT id, file_name, mime_type, created_at 
+            FROM canteen_menu_assets 
+            WHERE active = 1 
+            ORDER BY created_at DESC 
+            LIMIT 1
+            """
+        )
+        latest_asset = cursor.fetchone()
+        
+        verification_result = {
+            "total_items": total_items,
+            "categories": categories,
+            "latest_asset": latest_asset,
+            "visibility_status": "verified" if total_items > 0 else "no_items",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return verification_result
     except mysql.connector.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:
@@ -3051,6 +3682,7 @@ async def get_notifications(current_user = Depends(auth.get_current_user), db = 
             LEFT JOIN user_notification_reads ur ON n.id = ur.notification_id 
                 AND ur.user_id = %s
             WHERE n.target_role IN ('all', %s)
+              AND (n.expires_at IS NULL OR n.expires_at >= NOW())
             ORDER BY n.priority DESC, n.created_at DESC
             """,
             (current_user["id"], current_user["role"])
@@ -3116,7 +3748,8 @@ async def get_unread_notification_count(current_user = Depends(auth.get_current_
             LEFT JOIN user_notification_reads ur ON n.id = ur.notification_id 
                 AND ur.user_id = %s
             WHERE n.target_role IN ('all', %s)
-            AND ur.is_read IS NULL
+              AND (n.expires_at IS NULL OR n.expires_at >= NOW())
+              AND ur.is_read IS NULL
             """,
             (current_user["id"], current_user["role"])
         )
@@ -3169,6 +3802,39 @@ async def delete_notification(notification_id: int, current_user = Depends(auth.
 # UTILITY ENDPOINTS
 # ============================================================================
 
+# Lightweight canteen staff management (uses users.department = 'canteen')
+@app.get("/canteen/staff")
+async def list_canteen_staff(current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT id, full_name, email, department FROM users WHERE department = 'canteen' ORDER BY full_name")
+        return cursor.fetchall()
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.post("/canteen/staff/promote")
+async def promote_to_canteen_staff(payload: dict, current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admins only")
+    user_id = (payload or {}).get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor()
+        cursor.execute("UPDATE users SET department = 'canteen' WHERE id = %s", (user_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"promoted": True}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -3204,11 +3870,13 @@ async def health_check():
 # ---------------------------------------------------------------------------
 @app.get("/organizations")
 async def get_organizations_alias(current_user = Depends(auth.get_current_user)):
-    """Alias: return clubs (or organization_details) as organizations for frontend"""
+    """Alias: return clubs (or organization_details) as organizations for frontend.
+    Always includes organization_name and membership_status for current user."""
     try:
         connection = get_mysql_connection()
         cursor = connection.cursor(dictionary=True)
         college_id = current_user.get("college_id")
+        user_id = current_user.get("id")
         # Detect which table exists
         def table_exists(name: str) -> bool:
             cursor.execute("SHOW TABLES LIKE %s", (name,))
@@ -3219,14 +3887,28 @@ async def get_organizations_alias(current_user = Depends(auth.get_current_user))
                 (college_id, college_id)
             )
             rows = cursor.fetchall()
-            # add member_count via club_memberships
+            # add member_count and membership_status via club_memberships
             for r in rows:
+                # normalize name -> organization_name
+                r["organization_name"] = r.get("name")
                 cursor.execute(
                     "SELECT COUNT(*) as member_count FROM club_memberships WHERE club_id = %s AND status = 'approved'",
                     (r["id"],)
                 )
                 cnt = cursor.fetchone()
                 r["member_count"] = cnt["member_count"] if cnt else 0
+                # membership status for current user
+                try:
+                    cursor.execute(
+                        "SELECT status FROM club_memberships WHERE club_id = %s AND user_id = %s",
+                        (r["id"], user_id)
+                    )
+                    ms = cursor.fetchone()
+                    r["membership_status"] = ms.get("status") if ms else None
+                    r["is_member"] = r["membership_status"] in ("member", "approved", "selected")
+                except Exception:
+                    r["membership_status"] = None
+                    r["is_member"] = False
             return rows
         # Fallback to organization_details + organization_memberships
         cursor.execute("SHOW COLUMNS FROM organization_details")
@@ -3235,7 +3917,7 @@ async def get_organizations_alias(current_user = Depends(auth.get_current_user))
         type_col = "organization_type" if "organization_type" in cols else None
         # If college filtering column exists
         college_col = "college_id" if "college_id" in cols else None
-        select_sql = f"SELECT id, {name_col} as name" + (f", {type_col} as category" if type_col else "") + (f", {college_col} as college_id" if college_col else "") + ", user_id FROM organization_details"
+        select_sql = f"SELECT id, {name_col} as organization_name" + (f", {type_col} as category" if type_col else "") + (f", {college_col} as college_id" if college_col else "") + ", user_id FROM organization_details"
         where = ""
         params = []
         if college_col and college_id:
@@ -3243,7 +3925,7 @@ async def get_organizations_alias(current_user = Depends(auth.get_current_user))
             params.append(college_id)
         cursor.execute(select_sql + where, tuple(params))
         orgs = cursor.fetchall()
-        # member_count from organization_memberships if present
+        # member_count and membership_status from organization_memberships if present
         if table_exists("organization_memberships"):
             for o in orgs:
                 cursor.execute(
@@ -3252,6 +3934,17 @@ async def get_organizations_alias(current_user = Depends(auth.get_current_user))
                 )
                 cnt = cursor.fetchone()
                 o["member_count"] = cnt["member_count"] if cnt else 0
+                try:
+                    cursor.execute(
+                        "SELECT status FROM organization_memberships WHERE organization_id = %s AND user_id = %s",
+                        (o["id"], user_id)
+                    )
+                    ms = cursor.fetchone()
+                    o["membership_status"] = ms.get("status") if ms else None
+                    o["is_member"] = o["membership_status"] in ("member", "approved", "selected")
+                except Exception:
+                    o["membership_status"] = None
+                    o["is_member"] = False
         return orgs
     except mysql.connector.Error as e:
         return {"organizations": [], "error": str(e)}
@@ -3613,6 +4306,331 @@ async def notifications_stats_alias(current_user = Depends(auth.get_current_user
 async def student_timetable_endpoint(current_user = Depends(auth.get_current_user)):
     """Get student's weekly timetable"""
     return get_student_timetable(current_user)
+
+@app.get("/timetable/upcoming")
+async def upcoming_classes(window: int = 10, current_user = Depends(auth.get_current_user)):
+    """Return upcoming classes within next `window` minutes for the current user.
+    Students: personal timetable (user_timetable_entries) + extra lectures from mapped teachers.
+    Faculty: extra lectures they scheduled (and optionally future: their standard schedule).
+    Also creates a one-off notification for each upcoming item if not already created recently.
+    """
+    from datetime import datetime, timedelta, date
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        now = datetime.now()
+        upcoming = []
+        role = current_user.get("role")
+
+        if role == "student":
+            today_name = now.strftime('%A')
+            # Personal timetable for today
+            cursor.execute(
+                """
+                SELECT id, day_of_week, start_time, end_time, subject, room, faculty
+                FROM user_timetable_entries
+                WHERE user_id = %s AND day_of_week = %s
+                ORDER BY start_time
+                """,
+                (current_user["id"], today_name)
+            )
+            rows = cursor.fetchall() or []
+            for r in rows:
+                st_raw = r.get("start_time")
+                if not st_raw: 
+                    continue
+                st = _as_pytime(st_raw) if '_as_pytime' in globals() else st_raw
+                try:
+                    # If still timedelta or string, attempt fallback conversions
+                    from datetime import time as dtime
+                    if isinstance(st, str):
+                        hh, mm = st.split(":")[0:2]
+                        st = dtime(int(hh), int(mm))
+                except Exception:
+                    pass
+                # End time normalization
+                et_raw = r.get("end_time")
+                et = _as_pytime(et_raw) if '_as_pytime' in globals() else et_raw
+                try:
+                    from datetime import time as dtime
+                    if isinstance(et, str):
+                        hh, mm = et.split(":")[0:2]
+                        et = dtime(int(hh), int(mm))
+                except Exception:
+                    et = None
+                # Combine and compute
+                st_dt = datetime.combine(date.today(), st)
+                minutes_until = int((st_dt - now).total_seconds() // 60)
+                if 0 <= minutes_until <= max(1, window):
+                    key = f"{today_name}-{st.strftime('%H:%M')}-{r.get('subject') or ''}"
+                    upcoming.append({
+                        "key": key,
+                        "type": "class",
+                        "day_of_week": today_name,
+                        "start_time": st.strftime('%H:%M'),
+                        "end_time": et.strftime('%H:%M') if et else None,
+                        "subject": r.get("subject"),
+                        "room": r.get("room"),
+                        "faculty": r.get("faculty"),
+                        "minutes_until": minutes_until,
+                    })
+                    title = f"Upcoming class: {r.get('subject')} at {st.strftime('%I:%M %p')}"
+                    message = " ".join(filter(None, [r.get('faculty'), r.get('room')])) or "Be on time!"
+                    cursor.execute(
+                        """
+                        SELECT n.id FROM notifications n
+                        JOIN notification_recipients ur ON ur.notification_id = n.id AND ur.user_id = %s
+                        WHERE n.category = 'timetable' AND n.title = %s AND n.created_at >= NOW() - INTERVAL 60 MINUTE
+                        LIMIT 1
+                        """,
+                        (current_user["id"], title)
+                    )
+                    exists = cursor.fetchone()
+                    if not exists:
+                        _notify_user(cursor, current_user["id"], title, message, category='timetable', created_by=current_user["id"])
+                        connection.commit()
+
+            # Extra lectures from mapped teachers within window
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS teacher_students (
+                  id INT AUTO_INCREMENT PRIMARY KEY,
+                  teacher_id INT NOT NULL,
+                  student_id INT NOT NULL,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE KEY uniq_teacher_student (teacher_id, student_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
+            cursor.execute(
+                """
+                SELECT el.id, el.subject, el.room, el.start_time, el.end_time, u.full_name AS faculty_name
+                FROM extra_lectures el
+                JOIN teacher_students ts ON ts.teacher_id = el.faculty_id AND ts.student_id = %s
+                LEFT JOIN users u ON u.id = el.faculty_id
+                WHERE el.start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL %s MINUTE)
+                ORDER BY el.start_time
+                """,
+                (current_user["id"], max(1, window))
+            )
+            for r in cursor.fetchall() or []:
+                st_dt = r.get("start_time")
+                if not st_dt: continue
+                minutes_until = int((st_dt - now).total_seconds() // 60)
+                key = f"extra-{r['id']}"
+                upcoming.append({
+                    "key": key,
+                    "type": "extra",
+                    "start_time": st_dt.strftime('%H:%M'),
+                    "end_time": r.get("end_time").strftime('%H:%M') if r.get("end_time") else None,
+                    "subject": r.get("subject"),
+                    "room": r.get("room"),
+                    "faculty": r.get("faculty_name"),
+                    "minutes_until": minutes_until,
+                })
+
+        elif role == "faculty":
+            # Extra lectures authored by faculty within window
+            cursor.execute(
+                """
+                SELECT id, subject, room, start_time, end_time
+                FROM extra_lectures
+                WHERE faculty_id = %s AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL %s MINUTE)
+                ORDER BY start_time
+                """,
+                (current_user["id"], max(1, window))
+            )
+            for r in cursor.fetchall() or []:
+                st_dt = r.get("start_time")
+                if not st_dt: continue
+                minutes_until = int((st_dt - now).total_seconds() // 60)
+                key = f"extra-{r['id']}"
+                upcoming.append({
+                    "key": key,
+                    "type": "extra",
+                    "start_time": st_dt.strftime('%H:%M'),
+                    "end_time": r.get("end_time").strftime('%H:%M') if r.get("end_time") else None,
+                    "subject": r.get("subject"),
+                    "room": r.get("room"),
+                    "minutes_until": minutes_until,
+                })
+        else:
+            # For other roles, return empty for now
+            pass
+
+        return {"upcoming": upcoming}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/timetable/exists")
+async def has_timetable(current_user = Depends(auth.get_current_user)):
+    """Check if the current student already has a timetable uploaded"""
+    if current_user.get("role") != "student":
+        raise HTTPException(status_code=403, detail="Students only")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM user_timetable_entries WHERE user_id = %s",
+            (current_user["id"],)
+        )
+        result = cursor.fetchone()
+        has_timetable = (result.get("count", 0) > 0) if result else False
+        return {"has_timetable": has_timetable}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+# --- Teacher-Student mapping and Extra lectures ---
+
+@app.post("/faculty/students/{student_id}")
+async def add_student_mapping(student_id: int, current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty only")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS teacher_students (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              teacher_id INT NOT NULL,
+              student_id INT NOT NULL,
+              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE KEY uniq_teacher_student (teacher_id, student_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            "INSERT IGNORE INTO teacher_students (teacher_id, student_id) VALUES (%s, %s)",
+            (current_user["id"], student_id)
+        )
+        connection.commit()
+        return {"status": "ok"}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.delete("/faculty/students/{student_id}")
+async def remove_student_mapping(student_id: int, current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty only")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("DELETE FROM teacher_students WHERE teacher_id = %s AND student_id = %s", (current_user["id"], student_id))
+        connection.commit()
+        return {"status": "ok"}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/faculty/students")
+async def list_mapped_students(current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty only")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT ts.student_id, u.full_name, u.email
+            FROM teacher_students ts
+            LEFT JOIN users u ON u.id = ts.student_id
+            WHERE ts.teacher_id = %s
+            ORDER BY ts.created_at DESC
+            """,
+            (current_user["id"],)
+        )
+        return {"students": cursor.fetchall() or []}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+from pydantic import BaseModel
+class ExtraLectureIn(BaseModel):
+    subject: str
+    start_time: str  # ISO datetime string
+    end_time: str    # ISO datetime string
+    room: str | None = None
+    student_ids: list[int] | None = None
+
+@app.post("/faculty/extra-lectures")
+async def schedule_extra_lecture(payload: ExtraLectureIn, current_user = Depends(auth.get_current_user)):
+    if current_user.get("role") != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty only")
+    from datetime import datetime
+    try:
+        st = datetime.fromisoformat(payload.start_time)
+        et = datetime.fromisoformat(payload.end_time)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid datetime format; use ISO 8601")
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        # Ensure tables
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS extra_lectures (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              faculty_id INT NOT NULL,
+              subject VARCHAR(255) NOT NULL,
+              room VARCHAR(100),
+              start_time DATETIME NOT NULL,
+              end_time DATETIME NOT NULL,
+              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS teacher_students (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              teacher_id INT NOT NULL,
+              student_id INT NOT NULL,
+              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE KEY uniq_teacher_student (teacher_id, student_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        # Insert lecture
+        cursor.execute(
+            "INSERT INTO extra_lectures (faculty_id, subject, room, start_time, end_time) VALUES (%s,%s,%s,%s,%s)",
+            (current_user["id"], payload.subject, payload.room, st, et)
+        )
+        lecture_id = cursor.lastrowid
+        # Determine recipients
+        recipients: list[int] = []
+        if payload.student_ids:
+            recipients = payload.student_ids
+        else:
+            cursor.execute("SELECT student_id FROM teacher_students WHERE teacher_id = %s", (current_user["id"],))
+            recipients = [r["student_id"] for r in (cursor.fetchall() or [])]
+        # Notify recipients
+        title = f"Extra Lecture: {payload.subject} at {st.strftime('%I:%M %p')}"
+        message = (payload.room or "")
+        for sid in set(recipients):
+            _notify_user(cursor, sid, title, message, category='timetable', created_by=current_user["id"])
+        connection.commit()
+        return {"status": "ok", "lecture_id": lecture_id, "notified": len(set(recipients))}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
 
 @app.get("/timetable/faculty")
 async def faculty_timetable_endpoint(current_user = Depends(auth.get_current_user)):
@@ -3977,6 +4995,195 @@ async def mark_notice_read_endpoint(notice_id: int, current_user = Depends(auth.
 async def notice_stats_endpoint(current_user = Depends(auth.get_current_user)):
     """Get notice statistics"""
     return get_notice_stats(current_user)
+
+# ============================================================================
+# ADMIN SYSTEM MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/admin/system/stats")
+async def get_system_stats(current_user = Depends(auth.get_current_user)):
+    """Get system statistics for admin dashboard"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # Total users count
+        cursor.execute("SELECT COUNT(*) as total_users FROM users")
+        total_users = cursor.fetchone()["total_users"]
+        
+        # Total colleges count
+        cursor.execute("SELECT COUNT(DISTINCT college_name) as total_colleges FROM users WHERE college_name IS NOT NULL")
+        total_colleges = cursor.fetchone()["total_colleges"]
+        
+        # Active events count (events in future)
+        cursor.execute("SELECT COUNT(*) as active_events FROM events WHERE date >= CURDATE()")
+        active_events = cursor.fetchone()["active_events"]
+        
+        # Mock storage data (you can replace with actual disk usage queries)
+        storage_used = 750
+        storage_limit = 1000
+        
+        return {
+            "totalUsers": total_users,
+            "totalColleges": total_colleges,
+            "activeEvents": active_events,
+            "systemUptime": "99.9%",  # Mock data
+            "storageUsed": storage_used,
+            "storageLimit": storage_limit
+        }
+    except mysql.connector.Error as e:
+        return {"error": str(e)}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/admin/users")
+async def get_all_users(current_user = Depends(auth.get_current_user)):
+    """Get all users with their details for admin management"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        cursor.execute(
+            """
+            SELECT 
+                id,
+                full_name,
+                email,
+                role,
+                college_name,
+                department,
+                created_at,
+                last_login
+            FROM users 
+            ORDER BY created_at DESC
+            LIMIT 100
+            """
+        )
+        users = cursor.fetchall()
+        
+        # Convert datetime objects to strings
+        for user in users:
+            if user.get('created_at'):
+                user['created_at'] = user['created_at'].strftime('%Y-%m-%d')
+            if user.get('last_login'):
+                user['last_login'] = user['last_login'].strftime('%Y-%m-%d %H:%M')
+            else:
+                user['last_login'] = 'Never'
+            user['status'] = 'active'  # Default status
+        
+        return users
+    except mysql.connector.Error as e:
+        return {"error": str(e), "users": []}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/admin/colleges")
+async def get_all_colleges(current_user = Depends(auth.get_current_user)):
+    """Get all colleges with statistics"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        cursor.execute(
+            """
+            SELECT 
+                college_name as name,
+                COUNT(*) as total_users,
+                SUM(CASE WHEN role = 'student' THEN 1 ELSE 0 END) as students_count,
+                SUM(CASE WHEN role = 'faculty' THEN 1 ELSE 0 END) as faculty_count,
+                MIN(created_at) as created_at
+            FROM users 
+            WHERE college_name IS NOT NULL
+            GROUP BY college_name
+            ORDER BY total_users DESC
+            """
+        )
+        colleges = cursor.fetchall()
+        
+        # Convert to the expected format
+        formatted_colleges = []
+        for idx, college in enumerate(colleges):
+            formatted_colleges.append({
+                "id": f"COL{idx+1:03d}",
+                "name": college["name"],
+                "city": "Mumbai",  # Mock data - you can extract from user profiles
+                "state": "Maharashtra",  # Mock data
+                "students_count": college["students_count"],
+                "faculty_count": college["faculty_count"],
+                "status": "active",
+                "created_at": college["created_at"].strftime('%Y-%m-%d') if college["created_at"] else "Unknown"
+            })
+        
+        return formatted_colleges
+    except mysql.connector.Error as e:
+        return {"error": str(e), "colleges": []}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+@app.get("/admin/alerts")
+async def get_system_alerts(current_user = Depends(auth.get_current_user)):
+    """Get system alerts and notifications for admin"""
+    # For now, return some sample alerts
+    # You can create an admin_alerts table later for real alerts
+    return [
+        {
+            "id": 1,
+            "type": "info",
+            "message": "System running normally - all services operational",
+            "timestamp": "2025-01-20 10:30 AM",
+            "resolved": True
+        },
+        {
+            "id": 2,
+            "type": "success", 
+            "message": "Database backup completed successfully",
+            "timestamp": "2025-01-20 03:00 AM",
+            "resolved": True
+        }
+    ]
+
+@app.get("/admin/timetables")
+async def get_admin_timetables(current_user = Depends(auth.get_current_user)):
+    """Get all timetables across colleges for admin management"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        cursor.execute(
+            """
+            SELECT 
+                t.id,
+                t.day,
+                t.start_time as time,
+                t.subject,
+                t.faculty_name as faculty,
+                t.room,
+                t.batch,
+                t.semester,
+                u.college_name as college_name
+            FROM timetable_entries t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.user_type = 'faculty'
+            ORDER BY u.college_name, t.day, t.start_time
+            LIMIT 50
+            """
+        )
+        timetables = cursor.fetchall()
+        
+        # Add college_id for frontend compatibility
+        for entry in timetables:
+            entry["college_id"] = "1"  # Mock college ID
+            entry["id"] = str(entry["id"])
+        
+        return timetables
+    except mysql.connector.Error as e:
+        return {"error": str(e), "timetables": []}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
 
 if __name__ == "__main__":
     import uvicorn

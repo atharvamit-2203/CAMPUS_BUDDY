@@ -25,7 +25,13 @@ const StudentOrganizationsPage = () => {
     try {
       setLoading(true);
       const data = await studentAPI.getOrganizations();
-      setOrgs(Array.isArray(data) ? data : (data.organizations || []));
+      const allOrgs = Array.isArray(data) ? data : (data.organizations || []);
+      // Filter out organizations where user is already a member or has approved status
+      const availableOrgs = allOrgs.filter(org => {
+        const status = (org as any).membership_status;
+        return !status || !['member', 'active'].includes(status);
+      });
+      setOrgs(availableOrgs);
     } catch (e: any) {
       setError(e?.message || 'Failed to load organizations');
     } finally {
@@ -87,18 +93,26 @@ const StudentOrganizationsPage = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {orgs.map(org => (
-              <div key={org.id} className="bg-black/40 border border-white/10 rounded-xl p-6">
-                <div className="text-white font-semibold text-lg">{org.organization_name}</div>
-                <div className="text-gray-400 text-sm mt-1">Members: {org.member_count ?? 0}</div>
-                {org.description && <p className="text-gray-300 text-sm mt-3">{org.description}</p>}
-                <button onClick={() => join(org.id)} disabled={joining === org.id}
-                  className="mt-4 inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded">
-                  <UserPlus className="w-4 h-4 mr-2"/>
-                  {joining === org.id ? 'Joining...' : 'Join'}
-                </button>
-              </div>
-            ))}
+{orgs.map(org => {
+              const name = (org as any).organization_name || (org as any).name || 'Organization';
+              const status: string | undefined = (org as any).membership_status;
+              const isJoined = status ? ['member','active'].includes(status) : false;
+              const isPending = status === 'pending';
+              const btnLabel = joining === org.id ? 'Joining...' : isJoined ? 'Joined' : isPending ? 'Pending' : 'Join';
+              const btnDisabled = joining === org.id || isJoined || isPending;
+              return (
+                <div key={org.id} className="bg-black/40 border border-white/10 rounded-xl p-6">
+                  <div className="text-white font-semibold text-lg">{name}</div>
+                  <div className="text-gray-400 text-sm mt-1">Members: {(org as any).member_count ?? 0}</div>
+                  {(org as any).description && <p className="text-gray-300 text-sm mt-3">{(org as any).description}</p>}
+                  <button onClick={() => join(org.id)} disabled={btnDisabled}
+                    className={`mt-4 inline-flex items-center px-3 py-2 rounded ${isJoined ? 'bg-gray-600 cursor-not-allowed' : isPending ? 'bg-yellow-600 cursor-wait' : 'bg-green-600 hover:bg-green-700'} text-white`}>
+                    <UserPlus className="w-4 h-4 mr-2"/>
+                    {btnLabel}
+                  </button>
+                </div>
+              );
+            })}
           </div>
           </>
         )}

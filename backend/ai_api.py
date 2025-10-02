@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from ai_recommender import club_recommender, club_chatbot, UserProfile
 from auth import get_current_user
+from database import get_mysql_connection
 import logging
 
 router = APIRouter(prefix="/ai", tags=["AI Services"])
@@ -125,6 +126,43 @@ async def get_all_clubs_data():
     except Exception as e:
         logging.error(f"Error getting clubs data: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get clubs data")
+
+@router.get("/recommend-from-profile")
+async def recommend_from_profile(current_user: dict = Depends(get_current_user)):
+    """Build a user profile from stored preferences and return recommendations"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT semester, department, interests_json, skills_json FROM users WHERE id = %s", (current_user["id"],))
+        u = cursor.fetchone() or {}
+        import json as _json
+        interests = []
+        skills = []
+        try:
+            interests = _json.loads(u.get("interests_json") or "[]")
+        except Exception:
+            interests = []
+        try:
+            skills = _json.loads(u.get("skills_json") or "[]")
+        except Exception:
+            skills = []
+        # Map semester to year of study (approx)
+        sem = int(u.get("semester") or 1)
+        year = max(1, ((sem - 1) // 2) + 1)
+        user_profile = UserProfile(
+            interests=interests,
+            skills=skills,
+            year_of_study=year,
+            department=u.get("department") or "",
+            preferred_activities=[],
+            time_commitment="medium",
+            leadership_interest=False
+        )
+        recommendations = club_recommender.recommend_clubs(user_profile, top_k=5)
+        return {"success": True, "recommendations": recommendations, "user_profile": user_profile.dict()}
+    except Exception as e:
+        logging.error(f"Error in recommend-from-profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get recommendations from profile")
 
 @router.post("/update-user-preferences")
 async def update_user_preferences(

@@ -24,7 +24,7 @@ const RecruitmentPage = () => {
   const load = async () => {
     try {
       setLoading(true);
-      const resp = await fetch(`${API}/organizations/mine/members?status=pending,shortlisted`, { headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}` } });
+      const resp = await fetch(`${API}/organizations/mine/members?status=pending`, { headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}` } });
       if (!resp.ok) throw new Error('Failed to load candidates');
       const data = await resp.json();
       setMembers(Array.isArray(data) ? data : []);
@@ -47,7 +47,7 @@ const RecruitmentPage = () => {
       });
       if (!resp.ok) throw new Error('Update failed');
       // Optimistically remove from current list if moved out of filter
-      if (status === 'rejected' || status === 'selected') {
+      if (status === 'rejected' || status === 'active') {
         setMembers(prev => prev.filter(m => m.id !== userId));
       } else {
         await load();
@@ -110,7 +110,11 @@ const RecruitmentPage = () => {
     setDrag({ active: false, startX: 0, startY: 0, x: 0, y: 0, rotate: 0 });
     // Let the animation play, then update backend
     setTimeout(() => {
-      updateStatus(c.id, status);
+      // Map frontend statuses to database enum values
+      const dbStatus = status === 'selected' ? 'active' : 
+                      status === 'shortlisted' ? 'pending' : 
+                      status === 'rejected' ? 'rejected' : status;
+      updateStatus(c.id, dbStatus);
       setAnim(null);
     }, 260);
   };
@@ -339,7 +343,7 @@ const RecruitmentPage = () => {
                   </div>
                 </div>
                 <div className="pt-2 flex gap-2">
-                  <button onClick={()=>updateStatus(selected.id, 'selected')} className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded">Select</button>
+                  <button onClick={()=>updateStatus(selected.id, 'active')} className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded">Select</button>
                   <button onClick={()=>updateStatus(selected.id, 'rejected')} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded">Reject</button>
                 </div>
               </div>

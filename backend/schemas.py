@@ -15,7 +15,7 @@ class UserRegister(BaseModel):
     password: str
     full_name: str
     role: UserRole
-    college_id: Optional[int] = None
+    college_id: Optional[str] = None
     
     # Student specific fields
     student_id: Optional[str] = None
@@ -24,6 +24,10 @@ class UserRegister(BaseModel):
     semester: Optional[str] = None
     academic_year: Optional[str] = None
     batch: Optional[str] = None
+    
+    # Preferences
+    interests: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
     
     # Faculty specific fields
     employee_id: Optional[str] = None
@@ -46,9 +50,20 @@ class UserRegister(BaseModel):
 
     @validator('password')
     def password_must_be_strong(cls, v):
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
+        # Accept any password content as long as it has at least 6 characters
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
         return v
+
+    @validator('college_id')
+    def college_id_length(cls, v):
+        # If provided, must be 1..15 characters
+        if v is None:
+            return v
+        s = str(v)
+        if not (1 <= len(s) <= 15):
+            raise ValueError('college_id must be between 1 and 15 characters')
+        return s
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -60,7 +75,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     role: str
-    college_id: Optional[int]
+    college_id: Optional[str]
     department: Optional[str]
     bio: Optional[str]
     is_active: bool

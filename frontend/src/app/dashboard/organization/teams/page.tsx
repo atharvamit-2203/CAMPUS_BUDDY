@@ -12,7 +12,7 @@ const TeamsPage = () => {
     const run = async () => {
       try {
         setLoading(true);
-const resp = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000') + '/organizations/mine/members?status=member,approved,selected', {
+const resp = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000') + '/organizations/mine/members?status=active,member', {
           headers: { 'Authorization': 'Bearer ' + (typeof window !== 'undefined' ? localStorage.getItem('authToken') : '') }
         });
         if (!resp.ok) throw new Error('Failed to load members');
