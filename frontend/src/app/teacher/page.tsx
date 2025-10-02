@@ -122,8 +122,9 @@ export default function FacultyDashboard() {
 
   // Canteen states
   const [cart, setCart] = useState<{id: string, name: string, price: number, quantity: number}[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('breakfast');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCart, setShowCart] = useState(false);
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   // Sample menu data for teachers
   const menuData = {
@@ -450,6 +451,32 @@ export default function FacultyDashboard() {
 
   const getTotalItems = () => {
     return cart.reduce((total, item) => total + item.quantity, 0);
+  };
+
+  // Get filtered menu items based on category and search
+  const getFilteredMenuItems = () => {
+    let items: Array<{id: string, name: string, price: number, description: string, image: string, category: string}> = [];
+    
+    if (selectedCategory === 'all') {
+      // Combine all categories
+      Object.entries(menuData).forEach(([category, categoryItems]) => {
+        items.push(...categoryItems.map(item => ({ ...item, category })));
+      });
+    } else {
+      // Get items from selected category
+      const categoryItems = menuData[selectedCategory as keyof typeof menuData] || [];
+      items = categoryItems.map(item => ({ ...item, category: selectedCategory }));
+    }
+
+    // Filter by search term
+    if (searchTerm.trim()) {
+      items = items.filter(item => 
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return items;
   };
 
   const stats = [
@@ -1347,10 +1374,60 @@ export default function FacultyDashboard() {
               </div>
             )}
 
-            {/* Category Selection */}
+            {/* Category Selection and Search */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Menu Categories</h3>
-              <div className="flex flex-wrap gap-3">
+              
+              {/* Search Bar */}
+              <div className="mb-6">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search menu items..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-500"
+                  />
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-400">🔍</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category Dropdown */}
+              <div className="mb-4">
+                <label htmlFor="category-dropdown" className="block text-sm font-medium text-gray-700 mb-2">
+                  Filter by Category
+                </label>
+                <select
+                  id="category-dropdown"
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="breakfast">🥞 Breakfast</option>
+                  <option value="lunch">🍛 Lunch</option>
+                  <option value="snacks">🍟 Snacks</option>
+                  <option value="beverages">☕ Beverages</option>
+                  <option value="desserts">🍰 Desserts</option>
+                  <option value="healthy">🥗 Healthy Options</option>
+                </select>
+              </div>
+
+              {/* Category Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                <button
+                  onClick={() => setSelectedCategory('all')}
+                  className={`p-4 rounded-xl flex flex-col items-center space-y-2 transition-all duration-200 ${
+                    selectedCategory === 'all'
+                      ? 'bg-green-500 text-white shadow-lg'
+                      : 'bg-gray-100 text-gray-700 hover:bg-green-100'
+                  }`}
+                >
+                  <span className="text-2xl">🍽️</span>
+                  <span className="text-sm font-medium">All Items</span>
+                </button>
                 {[
                   { id: 'breakfast', name: 'Breakfast', icon: '🥞' },
                   { id: 'lunch', name: 'Lunch', icon: '🍛' },
@@ -1362,14 +1439,14 @@ export default function FacultyDashboard() {
                   <button
                     key={category.id}
                     onClick={() => setSelectedCategory(category.id)}
-                    className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-all duration-200 ${
+                    className={`p-4 rounded-xl flex flex-col items-center space-y-2 transition-all duration-200 ${
                       selectedCategory === category.id
-                        ? 'bg-green-500 text-white'
+                        ? 'bg-green-500 text-white shadow-lg'
                         : 'bg-gray-100 text-gray-700 hover:bg-green-100'
                     }`}
                   >
-                    <span>{category.icon}</span>
-                    <span>{category.name}</span>
+                    <span className="text-2xl">{category.icon}</span>
+                    <span className="text-sm font-medium">{category.name}</span>
                   </button>
                 ))}
               </div>
@@ -1378,29 +1455,50 @@ export default function FacultyDashboard() {
             {/* Menu Items */}
             <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
               <div className="bg-gradient-to-r from-gray-50 to-green-50 p-6 border-b border-gray-100">
-                <h3 className="text-2xl font-bold text-gray-900 capitalize">
-                  {selectedCategory} Menu
+                <h3 className="text-2xl font-bold text-gray-900">
+                  {selectedCategory === 'all' ? 'All Menu Items' : `${selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)} Menu`}
+                  {searchTerm && <span className="text-lg font-normal text-gray-600 ml-2">- "{searchTerm}"</span>}
                 </h3>
+                <p className="text-gray-600 mt-1">
+                  {getFilteredMenuItems().length} items found
+                </p>
               </div>
               <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(menuData[selectedCategory as keyof typeof menuData] || []).map((item) => (
-                    <div key={item.id} className="bg-gray-50 rounded-xl p-4 hover:bg-green-50 transition-all duration-200 transform hover:scale-105">
-                      <div className="text-4xl mb-3 text-center">{item.image}</div>
-                      <h4 className="font-bold text-gray-900 mb-1">{item.name}</h4>
-                      <p className="text-gray-600 text-sm mb-2">{item.description}</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-green-600 font-bold text-lg">₹{item.price}</span>
+                {getFilteredMenuItems().length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">😕</div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">
+                      {searchTerm ? 'No items found' : 'No items in this category'}
+                    </h4>
+                    <p className="text-gray-600">
+                      {searchTerm 
+                        ? 'Try adjusting your search terms or browse other categories.'
+                        : 'This category is currently empty. Check back later!'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {getFilteredMenuItems().map((item) => (
+                      <div key={item.id} className="bg-gray-50 rounded-xl p-4 hover:bg-green-50 transition-all duration-200 transform hover:scale-105 border border-gray-100">
+                        <div className="text-4xl mb-3 text-center">{item.image}</div>
+                        <h4 className="font-bold text-gray-900 mb-1">{item.name}</h4>
+                        <p className="text-gray-600 text-sm mb-2">{item.description}</p>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-green-600 font-bold text-lg">₹{item.price}</span>
+                          <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full capitalize">
+                            {item.category}
+                          </span>
+                        </div>
                         <button 
                           onClick={() => addToCart(item)}
-                          className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600 transition-colors"
+                          className="w-full bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600 transition-colors font-medium"
                         >
                           Add to Cart
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

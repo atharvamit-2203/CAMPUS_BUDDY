@@ -24,18 +24,6 @@ export default function LoginPage() {
             </div>
           </Link>
           
-          <Link href="/login/admin" className="block">
-            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-300 transform hover:scale-105">
-              <div className="flex items-center space-x-3">
-                <span className="text-2xl">👨‍🏫</span>
-                <div>
-                  <h3 className="font-semibold">Admin Login</h3>
-                  <p className="text-sm text-green-100">Manage the credentials and administration</p>
-                </div>
-              </div>
-            </div>
-          </Link>
-          
           <Link href="/login/faculty" className="block">
             <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white p-4 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105">
               <div className="flex items-center space-x-3">
@@ -43,6 +31,18 @@ export default function LoginPage() {
                 <div>
                   <h3 className="font-semibold">Faculty Login</h3>
                   <p className="text-sm text-indigo-100">Access faculty dashboard and committee management</p>
+                </div>
+              </div>
+            </div>
+          </Link>
+
+          <Link href="/login/staff" className="block">
+            <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white p-4 rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all duration-300 transform hover:scale-105">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl">🍽️</span>
+                <div>
+                  <h3 className="font-semibold">Staff Login</h3>
+                  <p className="text-sm text-amber-100">Canteen staff orders and QR verification</p>
                 </div>
               </div>
             </div>
@@ -55,6 +55,18 @@ export default function LoginPage() {
                 <div>
                   <h3 className="font-semibold">Organization Login</h3>
                   <p className="text-sm text-purple-100">Recruit talent and host events</p>
+                </div>
+              </div>
+            </div>
+          </Link>
+          
+          <Link href="/login/admin" className="block">
+            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-300 transform hover:scale-105">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl">🛡️</span>
+                <div>
+                  <h3 className="font-semibold">Admin Login</h3>
+                  <p className="text-sm text-green-100">System administration</p>
                 </div>
               </div>
             </div>

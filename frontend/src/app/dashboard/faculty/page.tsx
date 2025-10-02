@@ -4,10 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import CampusMiniMap from '@/components/CampusMiniMap';
-import { 
-  TrendingUp, 
-  Users, 
-  BookOpen, 
+import {
+  TrendingUp,
+  Users,
+  BookOpen,
   Brain,
   FileText,
   Clock,
@@ -15,8 +15,11 @@ import {
   Edit,
   Plus,
   Search,
-  Filter
+  Filter,
+  X,
+  Coffee
 } from 'lucide-react';
+import FacultyCanteenPage from '@/app/dashboard/faculty/canteen/page';
 
 // Faculty-specific interfaces
 interface Course {
@@ -97,6 +100,30 @@ const FacultyDashboard = () => {
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
   const [rescheduleOptions, setRescheduleOptions] = useState<any[]>([]);
   
+  // My Room Bookings (faculty)
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState('');
+
+  const loadBookings = async () => {
+    try {
+      setBookingsLoading(true);
+      setBookingsError('');
+      const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+      if (!token) { setBookings([]); return; }
+      const resp = await fetch(`${API}/rooms/my-bookings`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await resp.json().catch(()=>[]);
+      setBookings(Array.isArray(data) ? data : []);
+    } catch (e:any) {
+      setBookingsError(e?.message || 'Failed to load bookings');
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
+
+  useEffect(()=>{ loadBookings(); }, []);
+  
   // Time slots for the timetable grid
   const timeSlots = [
     '09:00 AM - 10:00 AM',
@@ -115,133 +142,12 @@ const FacultyDashboard = () => {
     if (user) {
       const fetchFacultyData = async () => {
         try {
-          // Mock data - replace with actual API calls
-          setCourses([
-            {
-              id: 1,
-              name: 'Database Management Systems',
-              code: 'CS-301',
-              semester: '6th',
-              students_enrolled: 45,
-              schedule: 'Mon, Wed, Fri - 9:00 AM',
-              credits: 4,
-              status: 'active'
-            },
-            {
-              id: 2,
-              name: 'Software Engineering',
-              code: 'CS-401',
-              semester: '8th',
-              students_enrolled: 38,
-              schedule: 'Tue, Thu - 11:00 AM',
-              credits: 3,
-              status: 'active'
-            }
-          ]);
-
-          setStudents([
-            {
-              id: 1,
-              full_name: 'John Smith',
-              student_id: 'CS20B1001',
-              course: 'Computer Science',
-              semester: '6th',
-              cgpa: 8.5,
-              attendance_percentage: 85,
-              recent_submissions: 3
-            },
-            {
-              id: 2,
-              full_name: 'Sarah Johnson',
-              student_id: 'CS20B1002',
-              course: 'Computer Science',
-              semester: '6th',
-              cgpa: 9.2,
-              attendance_percentage: 92,
-              recent_submissions: 4
-            }
-          ]);
-
-          setAssignments([
-            {
-              id: '1',
-              title: 'Database Design Project',
-              course: 'CS-301',
-              dueDate: '2025-09-20',
-              submitted: 35,
-              total: 45,
-              status: 'active'
-            },
-            {
-              id: '2',
-              title: 'Software Architecture Report',
-              course: 'CS-401',
-              dueDate: '2025-09-18',
-              submitted: 28,
-              total: 38,
-              status: 'active'
-            }
-          ]);
-
-          setResearch([
-            {
-              id: '1',
-              title: 'AI-Powered Educational Analytics',
-              description: 'Research on using machine learning for student performance prediction',
-              status: 'ongoing',
-              collaborators: 3,
-              publications: 2,
-              duration: '18 months',
-              domain: ['Machine Learning', 'Education Technology']
-            }
-          ]);
-
-          setWeeklyTimetable({
-            Monday: [
-              { 
-                id: 1,
-                time: '09:00 AM - 10:00 AM',
-                subject: 'Database Systems', 
-                room: 'CS-201', 
-                batch: 'CS-6A',
-                day: 'Monday',
-                startTime: '09:00',
-                endTime: '10:00',
-                subjectCode: 'CS-301',
-                classType: 'lecture'
-              }
-            ],
-            Tuesday: [
-              { 
-                id: 2,
-                time: '11:00 AM - 12:00 PM',
-                subject: 'Software Engineering', 
-                room: 'CS-301', 
-                batch: 'CS-8B',
-                day: 'Tuesday',
-                startTime: '11:00',
-                endTime: '12:00',
-                subjectCode: 'CS-401',
-                classType: 'lecture'
-              }
-            ],
-            Wednesday: [],
-            Thursday: [
-              { 
-                id: 3,
-                time: '02:00 PM - 03:00 PM',
-                subject: 'Research Meeting', 
-                room: 'Faculty Lounge', 
-                batch: 'Faculty',
-                day: 'Thursday',
-                startTime: '14:00',
-                endTime: '15:00',
-                classType: 'meeting'
-              }
-            ],
-            Friday: [],
-            Saturday: []
-          });
+          // Clear any placeholder data; rely on real API data when available
+          setCourses([]);
+          setStudents([]);
+          setAssignments([]);
+          setResearch([]);
+          setWeeklyTimetable({});
         } catch (error) {
           console.error('Error fetching faculty data:', error);
         }
@@ -434,147 +340,32 @@ const FacultyDashboard = () => {
         </div>
       </div>
 
-      {/* Weekly Timetable Grid */}
+      {/* My Upcoming Classes */}
       <div className="bg-black/40 border border-white/10 rounded-xl p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold text-white flex items-center">
             <Clock className="w-6 h-6 mr-2 text-blue-400" />
-            Weekly Timetable
+            Upcoming Classes
           </h3>
           <div className="flex space-x-2">
-            <button 
-              onClick={() => setEditingTimetable(!editingTimetable)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                editingTimetable 
-                  ? 'bg-green-600 hover:bg-green-700 text-white' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
+            <a 
+              href="/dashboard/faculty/timetable"
+              className="flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors bg-blue-600 hover:bg-blue-700 text-white"
             >
               <Edit className="w-4 h-4" />
-              <span>{editingTimetable ? 'Save Changes' : 'Edit Schedule'}</span>
-            </button>
+              <span>View Full Timetable</span>
+            </a>
           </div>
         </div>
         
-        {/* Timetable Grid */}
+        {/* Upcoming Classes List */}
         <div className="overflow-x-auto">
-          <div className="min-w-[900px] bg-white/5 rounded-lg border border-white/10">
-            {/* Header Row */}
-            <div className="grid grid-cols-7 gap-0 border-b border-white/10">
-              <div className="p-3 text-center text-gray-300 font-medium bg-white/5">Time</div>
-              {weekDays.map(day => (
-                <div key={day} className="p-3 text-center text-gray-300 font-medium bg-white/5 border-l border-white/10">
-                  {day}
-                </div>
-              ))}
+          <div className="bg-white/5 rounded-lg border border-white/10 p-4">
+            <div className="text-gray-400 text-center py-4">
+              Visit the <a href="/dashboard/faculty/timetable" className="text-blue-400 hover:underline">Timetable</a> section to view and manage your complete schedule.
             </div>
-            
-            {/* Time Slots */}
-            {timeSlots.map(timeSlot => (
-              <div key={timeSlot} className="grid grid-cols-7 gap-0 border-b border-white/10 last:border-b-0">
-                {/* Time Column */}
-                <div className="p-3 text-center text-blue-400 font-medium bg-white/5 border-r border-white/10 text-sm">
-                  {timeSlot}
-                </div>
-                
-                {/* Day Columns */}
-                {weekDays.map(day => {
-                  const slot = getSlotForTime(day, timeSlot);
-                  return (
-                    <div key={`${day}-${timeSlot}`} className="p-2 border-l border-white/10 min-h-[80px] relative">
-                      {slot ? (
-                        <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 rounded-lg p-2 h-full group">
-                          {editingTimetable ? (
-                            <div className="space-y-1">
-                              <input
-                                type="text"
-                                value={slot.subject}
-                                onChange={(e) => updateTimetableSlot(day, timeSlot, 'subject', e.target.value)}
-                                className="w-full bg-black/40 text-white border border-white/20 rounded px-2 py-1 text-xs"
-                                placeholder="Subject"
-                              />
-                              <input
-                                type="text"
-                                value={slot.batch}
-                                onChange={(e) => updateTimetableSlot(day, timeSlot, 'batch', e.target.value)}
-                                className="w-full bg-black/40 text-white border border-white/20 rounded px-2 py-1 text-xs"
-                                placeholder="Batch"
-                              />
-                              <input
-                                type="text"
-                                value={slot.room}
-                                onChange={(e) => updateTimetableSlot(day, timeSlot, 'room', e.target.value)}
-                                className="w-full bg-black/40 text-white border border-white/20 rounded px-2 py-1 text-xs"
-                                placeholder="Room"
-                              />
-                              <button 
-                                onClick={() => removeTimetableSlot(day, timeSlot)}
-                                className="text-red-400 hover:text-red-300 text-xs"
-                                title="Remove slot"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="text-xs h-full flex flex-col justify-center relative">
-                              <div className="text-white font-medium truncate">{slot.subject}</div>
-                              <div className="text-gray-300 truncate">{slot.batch}</div>
-                              <div className="text-gray-400 flex items-center">
-                                <MapPin className="w-3 h-3 mr-1" />
-                                {slot.room}
-                              </div>
-                              
-                              {/* Emergency Cancel Button */}
-                              <button
-                                onClick={() => handleEmergencyCancel(slot)}
-                                className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Emergency Cancel"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        editingTimetable && (
-                          <button
-                            onClick={() => addTimetableSlot(day, timeSlot)}
-                            className="w-full h-full border-2 border-dashed border-gray-600 hover:border-blue-500 rounded-lg flex items-center justify-center text-gray-500 hover:text-blue-400 transition-colors"
-                            title="Add class to this time slot"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        )
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
           </div>
         </div>
-        
-        {editingTimetable && (
-          <div className="mt-4 p-4 bg-blue-600/20 border border-blue-500/30 rounded-lg">
-            <p className="text-blue-300 text-sm mb-3">
-              <strong>Editing Mode:</strong> Click on empty slots to add classes, or edit existing ones directly. Changes can be saved to the database.
-            </p>
-            <div className="flex space-x-2">
-              <button 
-                onClick={() => setEditingTimetable(false)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm transition-colors"
-              >
-                Save & Finish Editing
-              </button>
-              <button 
-                onClick={() => setEditingTimetable(false)}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Emergency Cancel Dialog */}
@@ -666,6 +457,57 @@ const FacultyDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* My Room Bookings */}
+      <div className="bg-black/40 border border-white/10 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white flex items-center">
+            <MapPin className="w-6 h-6 mr-2 text-blue-400" />
+            My Room Bookings
+          </h3>
+          <button onClick={loadBookings} className="text-sm text-blue-400 hover:text-blue-300">Refresh</button>
+        </div>
+        {bookingsError && <div className="text-red-300 text-sm mb-3">{bookingsError}</div>}
+        {bookingsLoading ? (
+          <div className="text-gray-300">Loading...</div>
+        ) : bookings.length === 0 ? (
+          <div className="text-gray-400">No bookings found.</div>
+        ) : (
+          <div className="space-y-3">
+            {bookings.slice(0, 6).map((b:any) => {
+              const start = (b.start_time || '').toString().substring(0,5);
+              const end = (b.end_time || '').toString().substring(0,5);
+              const dateStr = b.booking_date;
+              const room = b.room_name || `${b.building} ${b.room_number}`;
+              const status = b.status || 'approved';
+              const canCancel = status !== 'cancelled';
+              const cancelBooking = async () => {
+                try {
+                  const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+                  await fetch(`${API}/rooms/bookings/${b.id}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+                  await loadBookings();
+                } catch {}
+              };
+              return (
+                <div key={b.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
+                  <div>
+                    <div className="text-white font-medium">{room}</div>
+                    <div className="text-gray-300 text-sm">{dateStr} • {start} - {end}</div>
+                    {b.purpose && <div className="text-gray-400 text-xs">{b.purpose}</div>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${status==='cancelled' ? 'bg-red-600/20 text-red-300' : 'bg-blue-600/20 text-blue-300'}`}>{status}</span>
+                    <button onClick={cancelBooking} disabled={!canCancel} className="p-2 rounded hover:bg-white/10 disabled:opacity-50" title="Cancel booking">
+                      <X className="w-4 h-4 text-gray-300" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Recent Assignments */}
       <div className="bg-black/40 border border-white/10 rounded-xl p-6">
@@ -836,7 +678,8 @@ const FacultyDashboard = () => {
               {[
                 { id: 'overview', label: 'Overview', icon: TrendingUp },
                 { id: 'courses', label: 'Courses', icon: BookOpen },
-                { id: 'students', label: 'Students', icon: Users }
+                { id: 'students', label: 'Students', icon: Users },
+                { id: 'canteen', label: 'Canteen', icon: Coffee }
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
@@ -862,6 +705,7 @@ const FacultyDashboard = () => {
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'courses' && renderCourses()}
         {activeTab === 'students' && renderStudents()}
+        {activeTab === 'canteen' && <FacultyCanteenPage />}
       </div>
     </div>
   );

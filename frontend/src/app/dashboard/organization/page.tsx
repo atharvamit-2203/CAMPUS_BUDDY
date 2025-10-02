@@ -17,7 +17,8 @@ import {
   Eye,
   Send,
   Filter,
-  Search
+  Search,
+  X
 } from 'lucide-react';
 
 // Organization-specific interfaces
@@ -74,6 +75,28 @@ const OrganizationDashboard = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+
+  // My Room Bookings (organization)
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState('');
+
+  const loadBookings = async () => {
+    try {
+      setBookingsLoading(true);
+      setBookingsError('');
+      const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+      if (!token) { setBookings([]); return; }
+      const resp = await fetch(`${API}/rooms/my-bookings`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await resp.json().catch(()=>[]);
+      setBookings(Array.isArray(data) ? data : []);
+    } catch (e:any) {
+      setBookingsError(e?.message || 'Failed to load bookings');
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -181,6 +204,8 @@ const OrganizationDashboard = () => {
       fetchOrganizationData();
     }
   }, [user]);
+
+  useEffect(()=>{ loadBookings(); }, []);
 
   const handleCreateEvent = () => {
     router.push('/dashboard/organization/events');
@@ -291,6 +316,57 @@ const OrganizationDashboard = () => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* My Room Bookings */}
+      <div className="bg-black/40 border border-white/10 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white flex items-center">
+            <MapPin className="w-6 h-6 mr-2 text-blue-400" />
+            My Room Bookings
+          </h3>
+          <button onClick={loadBookings} className="text-sm text-blue-400 hover:text-blue-300">Refresh</button>
+        </div>
+        {bookingsError && <div className="text-red-300 text-sm mb-3">{bookingsError}</div>}
+        {bookingsLoading ? (
+          <div className="text-gray-300">Loading...</div>
+        ) : bookings.length === 0 ? (
+          <div className="text-gray-400">No bookings found.</div>
+        ) : (
+          <div className="space-y-3">
+            {bookings.slice(0, 6).map((b:any) => {
+              const start = (b.start_time || '').toString().substring(0,5);
+              const end = (b.end_time || '').toString().substring(0,5);
+              const dateStr = b.booking_date;
+              const room = b.room_name || `${b.building} ${b.room_number}`;
+              const status = b.status || 'approved';
+              const canCancel = status !== 'cancelled';
+              const cancelBooking = async () => {
+                try {
+                  const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+                  await fetch(`${API}/rooms/bookings/${b.id}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+                  await loadBookings();
+                } catch {}
+              };
+              return (
+                <div key={b.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
+                  <div>
+                    <div className="text-white font-medium">{room}</div>
+                    <div className="text-gray-300 text-sm">{dateStr} • {start} - {end}</div>
+                    {b.purpose && <div className="text-gray-400 text-xs">{b.purpose}</div>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${status==='cancelled' ? 'bg-red-600/20 text-red-300' : 'bg-blue-600/20 text-blue-300'}`}>{status}</span>
+                    <button onClick={cancelBooking} disabled={!canCancel} className="p-2 rounded hover:bg-white/10 disabled:opacity-50" title="Cancel booking">
+                      <X className="w-4 h-4 text-gray-300" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Recent Candidates */}

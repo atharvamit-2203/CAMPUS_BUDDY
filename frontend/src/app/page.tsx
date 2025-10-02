@@ -38,6 +38,12 @@ const OrganizationIcon = () => (
     </svg>
 );
 
+const StaffIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+);
+
 const AdminIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -62,9 +68,13 @@ const PathCard: React.FC<PathCardProps> = ({ icon, title, description, stats, ac
         </div>
         <p className="text-gray-400 text-base flex-grow">{description}</p>
         <div className="mt-6 pt-4 flex items-center justify-between">
-          <div className={`text-sm font-semibold ${statsAndArrowColor}`}>
-            {stats}
-          </div>
+          {stats ? (
+            <div className={`text-sm font-semibold ${statsAndArrowColor}`}>
+              {stats}
+            </div>
+          ) : (
+            <div></div>
+          )}
           <div className={`${statsAndArrowColor} group-hover:translate-x-1 transition-transform duration-300`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -84,7 +94,7 @@ const pathData: PathCardProps[] = [
         icon: <StudentIcon />,
         title: 'Student',
         description: 'Learn, connect, and grow with peers worldwide',
-        stats: '25K+ Active',
+        stats: '',
         accentColor: 'blue',
         href: '/login/student'
     },
@@ -92,16 +102,24 @@ const pathData: PathCardProps[] = [
         icon: <TeacherIcon />,
         title: 'Teacher',
         description: 'Teach, inspire, and mentor future leaders',
-        stats: '12K+ Educators',
+        stats: '',
         accentColor: 'purple',
         href: '/login/faculty'
+    },
+    {
+        icon: <StaffIcon />,
+        title: 'Staff',
+        description: 'Support, manage, and enable campus operations',
+        stats: '',
+        accentColor: 'cyan',
+        href: '/login/staff'
     },
     {
         icon: <OrganizationIcon />,
         title: 'Organization',
         description: 'Recruit talent, partner, and expand globally',
-        stats: '2.5K+ Companies',
-        accentColor: 'cyan',
+        stats: '',
+        accentColor: 'blue',
         href: '/login/organization'
     },
     {
@@ -309,23 +327,7 @@ const HomePage = () => {
                 </p>
               </div>
 
-              {/* Enhanced Stats */}
-              <div className="flex items-center space-x-8 pt-4">
-                <div className="text-center group">
-                  <div className="text-3xl font-bold text-white group-hover:text-blue-400 transition-colors">50K+</div>
-                  <div className="text-sm text-gray-400">Active Users</div>
-                </div>
-                <div className="w-px h-12 bg-gray-700"></div>
-                <div className="text-center group">
-                  <div className="text-3xl font-bold text-white group-hover:text-cyan-400 transition-colors">500+</div>
-                  <div className="text-sm text-gray-400">Campus</div>
-                </div>
-                <div className="w-px h-12 bg-gray-700"></div>
-                <div className="text-center group">
-                  <div className="text-3xl font-bold text-white group-hover:text-purple-400 transition-colors">2.5K+</div>
-                  <div className="text-sm text-gray-400">Companies</div>
-                </div>
-              </div>
+              
             </div>
           </div>
 
@@ -377,26 +379,7 @@ const HomePage = () => {
                 </div>
               </div>
 
-              {/* Enhanced floating info cards */}
-              <div className="absolute -top-12 -left-12 animate-bounce" style={{animationDelay: '0.5s'}}>
-                <div className="bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-xl border border-white/20 rounded-2xl p-4 shadow-2xl">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full animate-pulse"></div>
-                    <span className="text-white font-semibold">50K+ Users</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">Growing daily</div>
-                </div>
-              </div>
               
-              <div className="absolute -bottom-12 -right-12 animate-bounce" style={{animationDelay: '2s'}}>
-                <div className="bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-xl border border-white/20 rounded-2xl p-4 shadow-2xl">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full animate-pulse"></div>
-                    <span className="text-white font-semibold">500+ Campus</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">Worldwide reach</div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -408,7 +391,7 @@ const HomePage = () => {
           <div className="text-center">
             <h2 className="text-5xl font-bold text-white mb-16">Choose Your Path</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
             {pathData.map((path) => (
               <PathCard key={path.title} {...path} />
             ))}

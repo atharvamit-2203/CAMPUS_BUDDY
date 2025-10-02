@@ -28,15 +28,19 @@ export default function AdminLogin() {
         setError('');
 
         try {
-            const success = await login(formData.email, formData.password, 'admin');
-            if (success) {
-                router.push('/admin/dashboard');
-            } else {
-                setError('Invalid credentials. Please check your email and password.');
-            }
-        } catch (err) {
+            // AuthContext.login(email, password) throws on failure; no boolean is returned
+            await login(formData.email, formData.password);
+            // After successful login, route to the admin dashboard
+            router.push('/dashboard/admin');
+        } catch (err: any) {
             console.error('Login error:', err);
-            setError('Login failed. Please try again.');
+            const msg = (err && err.message) ? err.message : 'Login failed. Please try again.';
+            // Normalize common unauthorized message
+            if (/unauthorized|incorrect email or password|401/i.test(msg)) {
+                setError('Invalid email or password. Please check your credentials.');
+            } else {
+                setError(msg);
+            }
         } finally {
             setLoading(false);
         }

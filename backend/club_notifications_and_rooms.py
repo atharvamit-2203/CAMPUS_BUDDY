@@ -104,6 +104,23 @@ def _ensure_rooms_tables(cursor):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """
     )
+    # Ensure backward-compatibility: add missing columns/indexes if table pre-existed without them
+    try:
+        cursor.execute("ALTER TABLE room_bookings ADD COLUMN booked_by INT NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE room_bookings ADD COLUMN booked_by_type ENUM('faculty','organization','admin','other') NOT NULL DEFAULT 'faculty'")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE room_bookings ADD COLUMN organization_id INT NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE room_bookings ADD INDEX idx_booker (booked_by, booking_date)")
+    except Exception:
+        pass
 
 
 def _overlaps(cursor, room_id: int, booking_date: date, start_time: time, end_time: time) -> bool:
@@ -376,6 +393,61 @@ async def book_room(
         )
         connection.commit()
         booking_id = cursor.lastrowid
+
+        # Broadcast notification to all users if an organization booked the room
+        try:
+            if booked_by_type == 'organization':
+                # Ensure main notifications table has expires_at
+                try:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS notifications (
+                          id INT AUTO_INCREMENT PRIMARY KEY,
+                          club_id INT NULL,
+                          title VARCHAR(200) NOT NULL,
+                          message TEXT NOT NULL,
+                          category VARCHAR(50) NOT NULL DEFAULT 'system',
+                          priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+                          target_role VARCHAR(20) NULL,
+                          expires_at DATETIME NULL,
+                          created_by INT NOT NULL,
+                          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                        """
+                    )
+                    try:
+                        cursor.execute("ALTER TABLE notifications ADD COLUMN expires_at DATETIME NULL")
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                # Compute expiry as booking_date + end_time
+                from datetime import datetime
+                dt_end = datetime.combine(payload.booking_date, payload.end_time)
+                # Build title and message
+                title = "Room Booking"
+                # Fetch room info to include
+                try:
+                    cursor.execute("SELECT building, room_number FROM rooms WHERE id = %s", (payload.room_id,))
+                    rm = cursor.fetchone() or {}
+                    room_label = f"{rm.get('building','')} {rm.get('room_number','')}".strip()
+                except Exception:
+                    room_label = str(payload.room_id)
+                time_label = f"{payload.booking_date} {payload.start_time.strftime('%H:%M')} - {payload.end_time.strftime('%H:%M')}"
+                message = f"{room_label} booked: {payload.purpose} • {time_label}"
+                # Insert notification targeting all roles
+                cursor.execute(
+                    """
+                    INSERT INTO notifications (title, message, category, priority, target_role, expires_at, created_by, created_at)
+                    VALUES (%s, %s, 'room_booking', 'medium', 'all', %s, %s, NOW())
+                    """,
+                    (title, message, dt_end, current_user["id"])
+                )
+                # No per-user reads in this system; main /notifications uses user_notification_reads to track read state
+                connection.commit()
+        except Exception:
+            # Do not fail the booking if notification broadcast fails
+            pass
 
         return {"message": "Room booked", "booking_id": booking_id}
     except mysql.connector.Error as e:

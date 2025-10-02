@@ -16,15 +16,52 @@ import schemas
 # ============================================================================
 
 def get_student_timetable(current_user = Depends(auth.get_current_user)):
-    """Get student's weekly timetable"""
+    """Get student's weekly timetable.
+    Preference order:
+    1) If the student has uploaded a personal timetable (user_timetable_entries), use it.
+    2) Otherwise, fall back to course/semester timetable from the shared timetable table.
+    """
     if current_user.get("role") != "student":
         raise HTTPException(status_code=403, detail="Only students can view timetables")
     
     try:
         connection = get_mysql_connection()
         cursor = connection.cursor(dictionary=True)
-        
-        # Get student's course and semester for timetable lookup
+
+        # Days scaffold
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        weekly_schedule = {d: [] for d in days}
+
+        # 1) Try user-specific uploaded timetable first
+        try:
+            cursor.execute(
+                """
+                SELECT day_of_week, start_time, end_time, subject, room, faculty
+                FROM user_timetable_entries
+                WHERE user_id = %s
+                ORDER BY FIELD(day_of_week,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), start_time
+                """,
+                (current_user["id"],)
+            )
+            personal = cursor.fetchall()
+        except Exception:
+            personal = []
+
+        if personal:
+            for r in personal:
+                d = r.get('day_of_week')
+                if d in weekly_schedule:
+                    weekly_schedule[d].append({
+                        "time": f"{r['start_time']} - {r['end_time']}",
+                        "subject": r.get('subject'),
+                        "faculty": r.get('faculty'),
+                        "room": r.get('room'),
+                        "location": None,
+                        "type": "class"
+                    })
+            return {"timetable": weekly_schedule, "source": "personal"}
+
+        # 2) Fallback to course+semester timetable
         cursor.execute(
             """
             SELECT course, semester, department FROM users 
@@ -33,11 +70,9 @@ def get_student_timetable(current_user = Depends(auth.get_current_user)):
             (current_user["id"],)
         )
         student_info = cursor.fetchone()
-        
         if not student_info:
             raise HTTPException(status_code=404, detail="Student information not found")
-        
-        # Get timetable for the student's course and semester
+
         cursor.execute(
             """
             SELECT t.*, s.name as subject_name, s.code as subject_code,
@@ -52,14 +87,7 @@ def get_student_timetable(current_user = Depends(auth.get_current_user)):
             (student_info["course"], student_info["semester"])
         )
         timetable = cursor.fetchall()
-        
-        # Group by day of week
-        weekly_schedule = {}
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        
-        for day in days:
-            weekly_schedule[day] = []
-        
+
         for entry in timetable:
             day = entry["day_of_week"]
             if day in weekly_schedule:
@@ -72,8 +100,7 @@ def get_student_timetable(current_user = Depends(auth.get_current_user)):
                     "location": entry["location"],
                     "type": entry["class_type"]
                 })
-        
-        return {"timetable": weekly_schedule, "student_info": student_info}
+        return {"timetable": weekly_schedule, "student_info": student_info, "source": "course"}
     except mysql.connector.Error as e:
         return {"timetable": {}, "error": str(e)}
     finally:

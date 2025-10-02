@@ -375,16 +375,38 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
 
 @router.post("/ai/canteen/menu-ocr")
 async def canteen_menu_ocr(file: UploadFile = File(...), replace: bool = True, current_user = Depends(auth.get_current_user)):
-    """OCR a canteen menu image and upsert items into canteen_menu_items.
+    """OCR a canteen menu image/PDF and upsert items into canteen_menu_items.
     Only admin/faculty can update the menu."""
     if current_user.get("role") not in ["admin", "faculty"]:
         raise HTTPException(status_code=403, detail="Only admin/faculty can update menu")
-    img = await file.read()
+    
+    # Validate file type
+    allowed_types = [
+        'image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/bmp', 'image/webp',
+        'application/pdf'
+    ]
+    content_type = getattr(file, 'content_type', 'image/png')
+    if content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file type: {content_type}. Supported: images (JPG, PNG, etc.) and PDF"
+        )
+    
+    file_content = await file.read()
+    
+    # Enhanced instruction for better menu extraction
     instruction = (
-        "Extract the canteen menu as JSON array. For each item include: name (string), price (number, in INR), category (string among ['main','snacks','beverages'] if possible), is_vegetarian (boolean, best-effort)."
-        " Respond ONLY with JSON array."
+        "Extract all canteen/restaurant menu items from this image/document as a JSON array. "
+        "For each food item, provide: "
+        "name (string, the dish name), "
+        "price (number, extract price in rupees/INR, convert if needed), "
+        "category (string, classify as 'main', 'snacks', 'beverages', or 'desserts' based on the item), "
+        "is_vegetarian (boolean, true if vegetarian/veg, false if non-veg/chicken/fish/meat). "
+        "Only include actual food items with names and prices. "
+        "Respond ONLY with JSON array, no other text."
     )
-    text = _gemini_ocr_image_to_json(img, instruction, getattr(file, 'content_type', 'image/png'))
+    
+    text = _gemini_ocr_image_to_json(file_content, instruction, content_type)
     try:
         items = json.loads(text)
         if not isinstance(items, list):
@@ -417,6 +439,7 @@ async def canteen_menu_ocr(file: UploadFile = File(...), replace: bool = True, c
         if replace:
             cur.execute("DELETE FROM canteen_menu_items")
         inserted = 0
+        processed_items = []
         for it in items:
             name = str(it.get("name") or "").strip()
             if not name:
@@ -427,9 +450,10 @@ async def canteen_menu_ocr(file: UploadFile = File(...), replace: bool = True, c
             except Exception:
                 price = 0.0
             category = (it.get("category") or "snacks").lower()
-            if category not in ["main","snacks","beverages"]:
+            if category not in ["main","snacks","beverages","desserts","breakfast","dinner"]:
                 category = "snacks"
             veg = 1 if str(it.get("is_vegetarian")).lower() in ["1","true","yes","veg","vegetarian"] else 0
+            
             cur.execute(
                 """
                 INSERT INTO canteen_menu_items (name, description, price, category, is_vegetarian, is_available)
@@ -438,8 +462,22 @@ async def canteen_menu_ocr(file: UploadFile = File(...), replace: bool = True, c
                 (name, it.get("description") or "", price, category, veg)
             )
             inserted += 1
+            
+            # Add to preview
+            processed_items.append({
+                "name": name,
+                "price": price,
+                "category": category,
+                "is_vegetarian": bool(veg),
+                "description": it.get("description") or ""
+            })
+            
         conn.commit()
-        return {"inserted": inserted}
+        return {
+            "items_inserted": inserted,
+            "message": f"Successfully processed {inserted} menu items",
+            "preview": processed_items[:10]  # Return first 10 items as preview
+        }
     except mysql.connector.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:

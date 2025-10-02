@@ -2406,6 +2406,83 @@ async def delete_menu_item(item_id: int, current_user = Depends(auth.get_current
         if 'connection' in locals():
             connection.close()
 
+@app.patch("/canteen/menu/{item_id}")
+async def patch_menu_item(item_id: int, update_data: dict, current_user = Depends(auth.get_current_user)):
+    """Patch/update specific fields of a menu item (Admin/Faculty only)"""
+    if current_user.get("role") not in ["admin", "faculty"]:
+        raise HTTPException(status_code=403, detail="Only admin and faculty can update menu items")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        # Build dynamic update query
+        update_fields = []
+        update_values = []
+        
+        allowed_fields = ['name', 'description', 'price', 'category', 'is_vegetarian', 'is_available']
+        
+        for field in allowed_fields:
+            if field in update_data:
+                update_fields.append(f"{field} = %s")
+                update_values.append(update_data[field])
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        
+        update_values.append(item_id)
+        query = f"UPDATE canteen_menu_items SET {', '.join(update_fields)} WHERE id = %s"
+        
+        cursor.execute(query, update_values)
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Menu item not found")
+        
+        # Return updated item
+        cursor.execute("SELECT * FROM canteen_menu_items WHERE id = %s", (item_id,))
+        updated_item = cursor.fetchone()
+        
+        return {"message": "Menu item updated successfully", "item": updated_item}
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+@app.delete("/canteen/menu/clear")
+async def clear_all_menu_items(current_user = Depends(auth.get_current_user)):
+    """Clear all menu items (Admin only)"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can clear all menu items")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        # Get count before deletion
+        cursor.execute("SELECT COUNT(*) as count FROM canteen_menu_items")
+        count_before = cursor.fetchone()["count"]
+        
+        cursor.execute("DELETE FROM canteen_menu_items")
+        connection.commit()
+        
+        return {
+            "message": f"Successfully cleared {count_before} menu items",
+            "items_deleted": count_before
+        }
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
 @app.get("/canteen/menu/verify-visibility")
 async def verify_menu_visibility(current_user = Depends(auth.get_current_user)):
     """Verify that uploaded menu is visible across all roles"""

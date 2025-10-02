@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,23 +50,87 @@ const StudentCanteen = () => {
     pickup_code: string;
   } | null>(null);
 
-  const menuItems: MenuItem[] = [
-    // Main Course
-    { id: '1', name: 'Butter Chicken with Rice', price: 120, description: 'Tender chicken in rich tomato-based curry', category: 'main', available: true },
-    { id: '2', name: 'Veg Biryani', price: 100, description: 'Aromatic basmati rice with mixed vegetables', category: 'main', available: true },
-    { id: '3', name: 'Paneer Tikka Masala', price: 110, description: 'Grilled paneer in spicy masala sauce', category: 'main', available: false },
-    
-    // Snacks
-    { id: '4', name: 'Samosa (2 pcs)', price: 30, description: 'Crispy fried pastry with spiced filling', category: 'snacks', available: true },
-    { id: '5', name: 'Club Sandwich', price: 80, description: 'Multi-layer sandwich with veggies', category: 'snacks', available: true },
-    { id: '6', name: 'Pizza Slice', price: 60, description: 'Margherita pizza slice', category: 'snacks', available: true },
-    
-    // Beverages
-    { id: '7', name: 'Masala Tea', price: 15, description: '', category: 'beverages', available: true },
-    { id: '8', name: 'Filter Coffee', price: 25, description: '', category: 'beverages', available: true },
-    { id: '9', name: 'Fresh Juice', price: 40, description: '', category: 'beverages', available: true },
-    { id: '10', name: 'Cold Drink', price: 30, description: '', category: 'beverages', available: true },
-  ];
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loadingMenu, setLoadingMenu] = useState(false);
+  const [menuError, setMenuError] = useState('');
+  const [orderError, setOrderError] = useState('');
+
+  useEffect(() => {
+    const loadMenu = async () => {
+      try {
+        setLoadingMenu(true);
+        const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+        
+        const resp = await fetch(`${API}/canteen/menu`, { headers: { Authorization: `Bearer ${token}` }});
+        if (!resp.ok) {
+          throw new Error('Unable to fetch canteen menu');
+        }
+
+        const data = await resp.json();
+
+        const collectedItems: { item: any; fallbackCategory?: string }[] = [];
+
+        const appendItems = (items: any[], fallbackCategory?: string) => {
+          if (!Array.isArray(items)) return;
+          items
+            .filter(Boolean)
+            .forEach((item) => collectedItems.push({ item, fallbackCategory }));
+        };
+
+        if (Array.isArray(data)) {
+          data.forEach((category: any) => {
+            appendItems(category?.items, category?.category_name || category?.category);
+          });
+        } else if (Array.isArray(data?.items)) {
+          appendItems(data.items);
+        }
+
+        if (collectedItems.length === 0) {
+          throw new Error('Menu is not available right now. Please check back later.');
+        }
+
+        const normalizeCategory = (rawCategory?: string) => {
+          const normalized = (rawCategory || '').toLowerCase();
+          if (normalized.includes('main')) return 'main';
+          if (normalized.includes('snack') || normalized.includes('fast')) return 'snacks';
+          if (normalized.includes('bever') || normalized.includes('drink')) return 'beverages';
+          return 'snacks';
+        };
+
+        const mapped: MenuItem[] = collectedItems.map(({ item, fallbackCategory }) => {
+          const derivedCategory = item.category ?? item.category_name ?? fallbackCategory;
+          const category = normalizeCategory(derivedCategory);
+          const priceValue = item.price ?? item.unit_price ?? item.cost;
+          const numericPrice = Number(priceValue ?? 0);
+
+          return {
+            id: String(item.id ?? item.menu_item_id ?? `${item.item_name || item.name}-${category}`),
+            name: item.name || item.item_name || 'Item',
+            price: Number.isFinite(numericPrice) ? numericPrice : 0,
+            description: item.description || '',
+            category,
+            available: typeof item.is_available === 'boolean'
+              ? item.is_available
+              : (item.is_available ?? item.available ?? 1) === 1
+          };
+        });
+
+        setMenuItems(mapped);
+      } catch (e: any) {
+        console.error('Error loading menu:', e);
+        setMenuError(e?.message || 'Failed to load menu');
+        setMenuItems([]);
+      } finally {
+        setLoadingMenu(false);
+      }
+    };
+
+    loadMenu();
+  }, []);
+
+  // Fallback: if no data yet, keep an empty list.
+  // Existing hardcoded examples were replaced by live backend data.
 
   const addToCart = (item: MenuItem) => {
     if (!item.available) return;
@@ -145,41 +209,30 @@ const StudentCanteen = () => {
         body: JSON.stringify(orderData)
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        const generatedOrder = {
-          id: String(result.order_id),
-          items: cart,
-          total_amount: getTotalAmount(),
-          payment_method: method,
-          payment_status: 'pending',
-          order_date: new Date(),
-          qr_code: result.qr_url,
-          pickup_code: (result.qr_token || '').slice(0,8).toUpperCase()
-        };
-        
-        setOrderDetails(generatedOrder);
-        setOrderPlaced(true);
-        setCart([]);
-        setShowCheckout(false);
+      if (!response.ok) {
+        throw new Error('Unable to place order. Please try again.');
       }
-    } catch {
-      // If API fails, still create mock order for demo
+
+      const result = await response.json();
       const generatedOrder = {
-        id: `ORD${Date.now()}`,
+        id: String(result.order_id),
         items: cart,
         total_amount: getTotalAmount(),
         payment_method: method,
-        payment_status: method === 'pay_now' ? 'paid' : 'pending',
-        order_date: new Date(),
-        qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ORDER_${Date.now()}`,
-        pickup_code: Math.random().toString(36).substr(2, 8).toUpperCase()
+        payment_status: result.payment_status || 'pending',
+        order_date: new Date(result.order_date || Date.now()),
+        qr_code: result.qr_url,
+        pickup_code: (result.qr_token || '').slice(0,8).toUpperCase()
       };
       
       setOrderDetails(generatedOrder);
       setOrderPlaced(true);
       setCart([]);
       setShowCheckout(false);
+      setOrderError('');
+    } catch (error: any) {
+      console.error('Error creating order:', error);
+      setOrderError(error?.message || 'Failed to place order. Please try again later.');
     }
   };
 
@@ -333,7 +386,8 @@ const StudentCanteen = () => {
             </button>
           </div>
           
-          <div className="bg-black/40 border border-white/10 rounded-xl p-6">
+<div className="bg-black/40 border border-white/10 rounded-xl p-6">
+            {menuError && (<div className="mb-4 text-red-300">{menuError}</div>)}
             {/* Today's Menu */}
             <div className="mb-8">
               <h3 className="text-xl font-semibold text-white mb-4">Today&apos;s Menu</h3>
@@ -342,7 +396,7 @@ const StudentCanteen = () => {
               <div className="mb-6">
                 <h4 className="text-lg font-medium text-green-400 mb-3">Main Course</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {menuItems.filter(item => item.category === 'main').map(item => renderMenuItem(item, 'green'))}
+{loadingMenu ? (<div className="text-gray-400">Loading...</div>) : menuItems.filter(item => item.category === 'main').map(item => renderMenuItem(item, 'green'))}
                 </div>
               </div>
 
@@ -350,7 +404,7 @@ const StudentCanteen = () => {
               <div className="mb-6">
                 <h4 className="text-lg font-medium text-yellow-400 mb-3">Snacks & Fast Food</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {menuItems.filter(item => item.category === 'snacks').map(item => renderMenuItem(item, 'yellow'))}
+{loadingMenu ? (<div className="text-gray-400">Loading...</div>) : menuItems.filter(item => item.category === 'snacks').map(item => renderMenuItem(item, 'yellow'))}
                 </div>
               </div>
 
@@ -358,7 +412,7 @@ const StudentCanteen = () => {
               <div className="mb-6">
                 <h4 className="text-lg font-medium text-blue-400 mb-3">Beverages</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  {menuItems.filter(item => item.category === 'beverages').map(item => renderMenuItem(item, 'blue'))}
+{loadingMenu ? (<div className="text-gray-400">Loading...</div>) : menuItems.filter(item => item.category === 'beverages').map(item => renderMenuItem(item, 'blue'))}
                 </div>
               </div>
             </div>

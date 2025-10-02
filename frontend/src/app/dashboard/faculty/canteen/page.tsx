@@ -56,118 +56,58 @@ export default function FacultyCanteenPage() {
   const [deliveryLocation, setDeliveryLocation] = useState('Faculty Lounge');
 
   useEffect(() => {
-    // Simulate API call
     const fetchData = async () => {
       try {
-        const mockMenuItems: MenuItem[] = [
-          {
-            id: 1,
-            name: 'Masala Dosa',
-            description: 'Crispy South Indian crepe with spiced potato filling',
-            price: 120,
-            category: 'breakfast',
-            image: '/images/masala-dosa.jpg',
-            rating: 4.5,
-            availability: true,
-            preparationTime: 15,
-            isVeg: true,
-            calories: 350
-          },
-          {
-            id: 2,
-            name: 'Veg Thali',
-            description: 'Complete Indian meal with rice, dal, vegetables, roti',
-            price: 180,
-            category: 'lunch',
-            image: '/images/veg-thali.jpg',
-            rating: 4.8,
-            availability: true,
-            preparationTime: 10,
-            isVeg: true,
-            calories: 650
-          },
-          {
-            id: 3,
-            name: 'Chicken Biryani',
-            description: 'Aromatic basmati rice with tender chicken pieces',
-            price: 220,
-            category: 'lunch',
-            image: '/images/chicken-biryani.jpg',
-            rating: 4.7,
-            availability: true,
-            preparationTime: 20,
-            isVeg: false,
-            calories: 580
-          },
-          {
-            id: 4,
-            name: 'Coffee',
-            description: 'Hot filter coffee with milk',
-            price: 25,
-            category: 'beverages',
-            image: '/images/coffee.jpg',
-            rating: 4.2,
-            availability: true,
-            preparationTime: 5,
-            isVeg: true,
-            calories: 50
-          },
-          {
-            id: 5,
-            name: 'Samosa',
-            description: 'Crispy fried pastry with spiced potato filling',
-            price: 15,
-            category: 'snacks',
-            image: '/images/samosa.jpg',
-            rating: 4.3,
-            availability: true,
-            preparationTime: 2,
-            isVeg: true,
-            calories: 150
-          },
-          {
-            id: 6,
-            name: 'Paneer Butter Masala',
-            description: 'Cottage cheese in rich tomato gravy with rice/roti',
-            price: 200,
-            category: 'dinner',
-            image: '/images/paneer-butter-masala.jpg',
-            rating: 4.6,
-            availability: false,
-            preparationTime: 15,
-            isVeg: true,
-            calories: 480
+        // Fetch menu items from API
+        const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+        
+        // Fetch menu items
+        const menuResponse = await fetch(`${API}/canteen/menu`, { 
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const menuData = await menuResponse.json();
+        
+        // Process menu items
+        const items: any[] = Array.isArray(menuData.items) ? menuData.items : [];
+        
+        // Check if we got menu items from the API
+        if (items.length > 0) {
+          const mappedItems: MenuItem[] = items.map((item: any) => ({
+            id: Number(item.id),
+            name: item.name || item.item_name || 'Item',
+            description: item.description || '',
+            price: Number(item.price || 0),
+            category: item.category || 'snacks',
+            image: item.image_url || '/images/default-food.jpg',
+            rating: item.rating || 4.0,
+            availability: (item.is_available ?? 1) === 1,
+            preparationTime: item.preparation_time || 10,
+            isVeg: item.is_vegetarian === 1,
+            calories: item.calories || undefined
+          }));
+          setMenuItems(mappedItems);
+          console.log('Loaded menu items from API:', mappedItems.length);
+        } else {
+          setMenuItems([]);
+        }
+        
+        // Fetch orders (or use mock data for demo)
+        try {
+          const ordersResponse = await fetch(`${API}/canteen/orders`, { 
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const ordersData = await ordersResponse.json();
+          if (Array.isArray(ordersData) && ordersData.length > 0) {
+            setOrders(ordersData);
+          } else {
+            setOrders([]);
           }
-        ];
-
-        const mockOrders: Order[] = [
-          {
-            id: 1,
-            items: [
-              { ...mockMenuItems[1], quantity: 1 },
-              { ...mockMenuItems[3], quantity: 2 }
-            ],
-            total: 230,
-            status: 'ready',
-            orderTime: '12:30 PM',
-            deliveryTime: '12:45 PM',
-            deliveryLocation: 'Faculty Lounge'
-          },
-          {
-            id: 2,
-            items: [
-              { ...mockMenuItems[0], quantity: 1 },
-              { ...mockMenuItems[3], quantity: 1 }
-            ],
-            total: 145,
-            status: 'preparing',
-            orderTime: '11:15 AM',
-            deliveryLocation: 'Computer Science Department'
-          }
-        ];
-
-        setMenuItems(mockMenuItems);
-        setOrders(mockOrders);
+        } catch (error) {
+          console.error('Error fetching orders:', error);
+          setOrders([]);
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error('Error fetching data:', error);

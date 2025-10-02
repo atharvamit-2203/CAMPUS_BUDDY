@@ -15,7 +15,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView, us
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [course, setCourse] = useState('');
-  const [year, setYear] = useState('');
+  const [semester, setSemester] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -40,7 +40,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView, us
         email,
         password,
         course,
-        year: Number(year) || 1,
+        semester: semester || '1',
         role: userType,
       });
       onSuccess();
@@ -53,7 +53,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView, us
     } finally {
       setIsLoading(false);
     }
-  }, [collegeId, fullName, username, email, course, year, password, confirmPassword, userType, register, onSuccess]);
+  }, [collegeId, fullName, username, email, course, semester, password, confirmPassword, userType, register, onSuccess]);
 
   const inputStyles = "block w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition";
 
@@ -111,27 +111,34 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView, us
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label htmlFor="course" className="block text-sm font-medium text-gray-700 mb-1">Course</label>
-          <input 
-            type="text" 
+          <select 
             id="course"
             value={course} 
             onChange={(e) => setCourse(e.target.value)} 
             className={inputStyles} 
             required 
-          />
+          >
+            <option value="">Select Course</option>
+            <option value="MBA TECH">MBA TECH</option>
+            <option value="B TECH CE">B TECH CE</option>
+            <option value="B TECH AIDS">B TECH AIDS</option>
+          </select>
         </div>
         <div>
-          <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-          <input 
-            type="number" 
-            id="year"
-            min="1"
-            max="8"
-            value={year} 
-            onChange={(e) => setYear(e.target.value)} 
+          <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+          <select 
+            id="semester"
+            value={semester} 
+            onChange={(e) => setSemester(e.target.value)} 
             className={inputStyles} 
             required 
-          />
+          >
+            <option value="">Select Semester</option>
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+            <option value="7">7</option>
+          </select>
         </div>
       </div>
 

@@ -16,7 +16,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView }) 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [course, setCourse] = useState('');
-  const [year, setYear] = useState('');
+  const [semester, setSemester] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -63,7 +63,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView }) 
         email,
         password,
         course,
-        year: parseInt(year),
+        semester: semester || '1',
         role: 'student' // Default to student role
       });
       console.log('Registration successful');
@@ -77,7 +77,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView }) 
         setError('Registration failed. Please try again.');
       }
     }
-  }, [collegeId, fullName, username, email, course, year, password, confirmPassword, register, onSuccess]);
+  }, [collegeId, fullName, username, email, course, semester, password, confirmPassword, register, onSuccess]);
 
   const inputStyles = "block w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition";
 
@@ -150,34 +150,38 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchView }) 
         </select>
       </div>
 
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label htmlFor="course" className="block text-sm font-medium text-gray-700 mb-1">Course</label>
-          <input 
-            type="text" 
+          <select 
             id="course"
             value={course} 
             onChange={(e) => setCourse(e.target.value)} 
             className={inputStyles} 
             required 
             disabled={isLoading}
-          />
+          >
+            <option value="">Select Course</option>
+            <option value="MBA TECH">MBA TECH</option>
+            <option value="B TECH CE">B TECH CE</option>
+            <option value="B TECH AIDS">B TECH AIDS</option>
+          </select>
         </div>
         <div>
-          <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+          <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
           <select 
-            id="year"
-            value={year} 
-            onChange={(e) => setYear(e.target.value)} 
+            id="semester"
+            value={semester} 
+            onChange={(e) => setSemester(e.target.value)} 
             className={inputStyles} 
             required
             disabled={isLoading}
           >
-            <option value="">Select Year</option>
-            <option value="1">1st Year</option>
-            <option value="2">2nd Year</option>
-            <option value="3">3rd Year</option>
-            <option value="4">4th Year</option>
+            <option value="">Select Semester</option>
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+            <option value="7">7</option>
           </select>
         </div>
       </div>

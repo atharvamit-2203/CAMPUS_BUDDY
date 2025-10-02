@@ -8,7 +8,7 @@ export interface User {
   username: string;
   email: string;
   full_name: string;
-  role: 'student' | 'faculty' | 'organization';
+role: 'student' | 'faculty' | 'organization' | 'staff';
   college_id?: number;
   department?: string;
   bio?: string;
@@ -51,8 +51,8 @@ export interface RegisterFormData {
   email: string;
   password: string;
   course: string;
-  year: number;
-  role: 'student' | 'faculty' | 'organization';
+  semester: string;
+role: 'student' | 'faculty' | 'organization' | 'staff';
   department?: string;
   student_id?: string;
   employee_id?: string;

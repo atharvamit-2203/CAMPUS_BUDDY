@@ -76,8 +76,8 @@ export interface RegisterRequest {
   email: string;
   password: string;
   course: string;
-  year: number;
-  role: 'student' | 'faculty' | 'organization';
+  semester: string; // backend expects string
+role: 'student' | 'faculty' | 'organization' | 'staff';
 }
 
 export interface AuthResponse {
@@ -127,6 +127,102 @@ export const authAPI = {
   // Test backend connection
   testConnection: async () => {
     return await apiCall('/health');
+  },
+};
+
+// Canteen Admin API
+export const canteenAPI = {
+  // Menu management
+  getMenu: async () => {
+    return await apiCall('/canteen/menu');
+  },
+  getCategories: async () => {
+    return await apiCall('/canteen/menu/categories');
+  },
+  getMenuByCategory: async (category: string) => {
+    return await apiCall(`/canteen/menu/by-category/${category}`);
+  },
+  addMenuItem: async (itemData: any) => {
+    return await apiCall('/canteen/menu', {
+      method: 'POST',
+      body: JSON.stringify(itemData),
+    });
+  },
+  updateMenuItem: async (itemId: number, itemData: any) => {
+    return await apiCall(`/canteen/menu/${itemId}`, {
+      method: 'PUT',
+      body: JSON.stringify(itemData),
+    });
+  },
+  deleteMenuItem: async (itemId: number) => {
+    return await apiCall(`/canteen/menu/${itemId}`, {
+      method: 'DELETE',
+    });
+  },
+  verifyMenuVisibility: async () => {
+    return await apiCall('/canteen/menu/verify-visibility');
+  },
+  
+  // Asset management
+  uploadMenuAsset: async (file: File) => {
+    const url = `${API_BASE_URL}/canteen/menu/upload`;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: fd,
+    });
+    if (!resp.ok) {
+      const e = await resp.json().catch(()=>({}));
+      throw new Error(e?.detail || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+  },
+  getLatestMenuAsset: async () => {
+    return await apiCall('/canteen/menu/latest-asset');
+  },
+  streamMenuAssetUrl: (assetId: number) => `${API_BASE_URL}/canteen/menu/assets/${assetId}/content`,
+  
+  // Order management
+  placeOrder: async (orderData: any) => {
+    return await apiCall('/canteen/order', {
+      method: 'POST',
+      body: JSON.stringify(orderData),
+    });
+  },
+  listOrdersAll: async () => {
+    return await apiCall('/canteen/orders/all');
+  },
+  listOrders: async (status?: string) => {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return await apiCall(`/canteen/orders${q}`);
+  },
+  updateOrderStatus: async (orderId: number, status: string) => {
+    return await apiCall(`/canteen/orders/${orderId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    });
+  },
+  scanQr: async (qr_token: string) => {
+    return await apiCall('/canteen/scan', {
+      method: 'POST',
+      body: JSON.stringify({ qr_token }),
+    });
+  },
+  
+  // Staff management
+  listStaff: async () => {
+    return await apiCall('/canteen/staff');
+  },
+  promoteStaff: async (userId: number) => {
+    return await apiCall('/canteen/staff/promote', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    });
   },
 };
 

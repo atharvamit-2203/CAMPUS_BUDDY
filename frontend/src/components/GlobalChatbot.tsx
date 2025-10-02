@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -10,12 +11,24 @@ interface ChatMsg { id: number; text: string; isBot: boolean; time: Date; }
 
 export default function GlobalChatbot() {
   const { user } = useAuth();
+  const [mounted, setMounted] = React.useState(false);
+  const portalRef = React.useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [input, setInput] = React.useState('');
   const [msgs, setMsgs] = React.useState<ChatMsg[]>([
     { id: 1, text: "Hi! I’m your CampusConnect assistant. How can I help you today?", isBot: true, time: new Date() }
   ]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const el = document.createElement('div');
+    el.id = 'global-chatbot-root';
+    document.body.appendChild(el);
+    portalRef.current = el;
+    setMounted(true);
+    return () => { try { document.body.removeChild(el); } catch {} };
+  }, []);
 
   const send = async () => {
     const txt = input.trim();
@@ -34,7 +47,7 @@ export default function GlobalChatbot() {
         body: JSON.stringify({ message: txt })
       });
       const data = await resp.json();
-      const ans = data?.answer || 'Sorry, I could not process that.';
+      const ans = (data?.response || data?.answer || data?.message || '').toString().trim() || 'Sorry, I could not process that.';
       setMsgs(prev => [...prev, { id: nextId + 1, text: ans, isBot: true, time: new Date() }]);
     } catch (e) {
       setMsgs(prev => [...prev, { id: nextId + 1, text: 'Network error. Please try again.', isBot: true, time: new Date() }]);
@@ -43,15 +56,17 @@ export default function GlobalChatbot() {
     }
   };
 
-  return (
+  if (!mounted || !portalRef.current) return null;
+
+  return ReactDOM.createPortal(
     <>
       {!open && (
-        <button onClick={()=>setOpen(true)} className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-2xl flex items-center justify-center z-50">
+        <button onClick={()=>setOpen(true)} className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-2xl flex items-center justify-center z-[9999]">
           <MessageCircle className="w-6 h-6" />
         </button>
       )}
       {open && (
-        <div className="fixed bottom-6 right-6 w-96 h-[520px] bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col z-50">
+        <div className="fixed bottom-6 right-6 w-96 max-w-[95vw] h-[520px] bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col z-[9999]">
           <div className="p-3 border-b border-white/10 flex items-center justify-between">
             <div className="text-white font-semibold">CampusConnect Assistant</div>
             <button onClick={()=>setOpen(false)} className="text-gray-300 hover:text-white"><X className="w-4 h-4"/></button>
@@ -59,7 +74,7 @@ export default function GlobalChatbot() {
           <div className="flex-1 p-3 overflow-y-auto space-y-3">
             {msgs.map(m => (
               <div key={m.id} className={`flex ${m.isBot ? 'justify-start' : 'justify-end'}`}>
-                <div className={`max-w-[80%] px-3 py-2 rounded-xl text-sm ${m.isBot ? 'bg-white/10 text-gray-100 rounded-bl-md' : 'bg-blue-600 text-white rounded-br-md'}`}>
+                <div className={`max-w-[80%] px-3 py-2 rounded-xl text-sm break-words whitespace-pre-wrap ${m.isBot ? 'bg-white/10 text-gray-100 rounded-bl-md' : 'bg-blue-600 text-white rounded-br-md'}`}>
                   {m.text}
                 </div>
               </div>
@@ -75,6 +90,7 @@ export default function GlobalChatbot() {
           </div>
         </div>
       )}
-    </>
+    </>,
+    portalRef.current
   );
 }

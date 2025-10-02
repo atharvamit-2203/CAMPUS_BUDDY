@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   FiCalendar, 
   FiClock, 
@@ -13,7 +14,8 @@ import {
   FiUsers,
   FiSettings,
   FiDownload,
-  FiUpload
+  FiUpload,
+  FiBell
 } from 'react-icons/fi';
 
 interface TimeSlot {
@@ -36,11 +38,22 @@ interface TimetableDay {
 }
 
 export default function FacultyTimetablePage() {
+  const { token } = useAuth();
   const [timetable, setTimetable] = useState<TimetableDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  // Extra Lecture form state
+  const [elSubject, setElSubject] = useState('');
+  const [elRoom, setElRoom] = useState('');
+  const [elDate, setElDate] = useState(''); // YYYY-MM-DD
+  const [elStart, setElStart] = useState(''); // HH:MM
+  const [elEnd, setElEnd] = useState('');   // HH:MM
+  const [elStudentIds, setElStudentIds] = useState('');
+  const [elStatus, setElStatus] = useState('');
+  // Upcoming toasts
+  const [toasts, setToasts] = useState<{ key: string; text: string }[]>([]);
 
   const timeSlots = [
     '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
@@ -50,7 +63,7 @@ export default function FacultyTimetablePage() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   useEffect(() => {
-    // Simulate API call
+    // Simulate API call (kept as-is for grid), and set loading false
     const fetchTimetable = async () => {
       try {
         const mockTimetable: TimetableDay[] = days.map((day, dayIndex) => ({
@@ -100,6 +113,63 @@ export default function FacultyTimetablePage() {
 
     fetchTimetable();
   }, []);
+
+  // Schedule extra lecture handler
+  const submitExtraLecture = async () => {
+    try {
+      setElStatus('');
+      if (!elSubject || !elDate || !elStart || !elEnd) {
+        setElStatus('Please fill subject, date, start and end time.');
+        return;
+      }
+      const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const headerToken = token || (typeof window !== 'undefined' ? localStorage.getItem('authToken') : '');
+      if (!headerToken) { setElStatus('Please log in.'); return; }
+      const startISO = `${elDate}T${elStart}:00`;
+      const endISO = `${elDate}T${elEnd}:00`;
+      const body: any = { subject: elSubject, start_time: startISO, end_time: endISO, room: elRoom || undefined };
+      const ids = (elStudentIds || '').split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isFinite(n));
+      if (ids.length > 0) body.student_ids = ids;
+      const resp = await fetch(`${API}/faculty/extra-lectures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${headerToken}` },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok) throw new Error(data?.detail || 'Failed to schedule extra lecture');
+      setElStatus(`Scheduled. Notified ${data?.notified ?? 0} students.`);
+      // reset simple inputs except date for convenience
+      setElSubject(''); setElRoom(''); setElStart(''); setElEnd(''); setElStudentIds('');
+    } catch (e:any) {
+      setElStatus(`Error: ${e?.message || e}`);
+    }
+  };
+
+  // Poll upcoming items for faculty
+  useEffect(() => {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const headerToken = token || (typeof window !== 'undefined' ? localStorage.getItem('authToken') : '');
+    if (!headerToken) return;
+    let timer: any;
+    const poll = async () => {
+      try {
+        const resp = await fetch(`${API}/timetable/upcoming?window=10`, { headers: { Authorization: `Bearer ${headerToken}` } });
+        const data = await resp.json().catch(()=>({upcoming:[]}));
+        const items: any[] = Array.isArray(data.upcoming) ? data.upcoming : [];
+        items.forEach((it) => {
+          const k = `fac_tt_${new Date().toDateString()}_${it.key}`;
+          if (typeof window !== 'undefined' && !localStorage.getItem(k)) {
+            localStorage.setItem(k, '1');
+            const text = `${it.type === 'extra' ? 'Extra' : 'Upcoming'} lecture in ${it.minutes_until} min: ${it.subject || 'Class'} (${it.start_time})`;
+            setToasts((prev) => [...prev, { key: k, text }]);
+          }
+        });
+      } catch {}
+      timer = setTimeout(poll, 60_000);
+    };
+    poll();
+    return () => { if (timer) clearTimeout(timer); };
+  }, [token]);
 
   const getSlotColor = (type: string) => {
     switch (type) {
@@ -160,6 +230,89 @@ export default function FacultyTimetablePage() {
               <FiDownload className="mr-2" />
               Export
             </button>
+            <label className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center cursor-pointer">
+              <FiUpload className="mr-2" />
+              Upload
+              <input type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  // Handle file upload logic here
+                  alert(`File "${file.name}" selected. Upload functionality will be implemented.`);
+                }
+              }} />
+            </label>
+          </div>
+        </div>
+
+        {/* Extra Lecture Scheduler */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Schedule Extra Lecture</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+              <input value={elSubject} onChange={e=>setElSubject(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Subject" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
+              <select className="w-full px-3 py-2 border rounded-lg">
+                <option value="">Select Course</option>
+                <option value="CS101">CS101 - Introduction to Programming</option>
+                <option value="CS201">CS201 - Data Structures</option>
+                <option value="CS301">CS301 - Database Systems</option>
+                <option value="CS401">CS401 - Computer Networks</option>
+                <option value="CS501">CS501 - Artificial Intelligence</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Batch/Class</label>
+              <select className="w-full px-3 py-2 border rounded-lg">
+                <option value="">Select Batch</option>
+                <option value="CSE-A">CSE-A</option>
+                <option value="CSE-B">CSE-B</option>
+                <option value="CSE-C">CSE-C</option>
+                <option value="IT-A">IT-A</option>
+                <option value="IT-B">IT-B</option>
+                <option value="ECE-A">ECE-A</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Room</label>
+              <input value={elRoom} onChange={e=>setElRoom(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Room (optional)" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <input type="date" value={elDate} onChange={e=>setElDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <select className="w-full px-3 py-2 border rounded-lg">
+                <option value="lecture">Lecture</option>
+                <option value="practical">Practical</option>
+                <option value="tutorial">Tutorial</option>
+                <option value="remedial">Remedial</option>
+                <option value="exam">Exam</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+              <input type="time" value={elStart} onChange={e=>setElStart(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+              <input type="time" value={elEnd} onChange={e=>setElEnd(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Student IDs (optional)</label>
+              <input value={elStudentIds} onChange={e=>setElStudentIds(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="e.g., 101,102,103" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={submitExtraLecture} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Schedule</button>
+            {elStatus && <span className="text-sm text-gray-600">{elStatus}</span>}
           </div>
         </div>
 
@@ -311,6 +464,15 @@ export default function FacultyTimetablePage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Toasts for upcoming lectures */}
+      <div className="fixed top-4 right-4 space-y-2 z-50">
+        {toasts.map((t) => (
+          <div key={t.key} className="bg-blue-600 text-white px-4 py-2 rounded shadow flex items-center">
+            <FiBell className="mr-2" /> {t.text}
+          </div>
+        ))}
       </div>
     </div>
   );
