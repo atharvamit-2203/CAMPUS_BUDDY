@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, DECIMAL, Date, ARRAY, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, DECIMAL, Date, ARRAY, JSON, ForeignKey
 from sqlalchemy.sql import func
 from database import Base
 
@@ -66,5 +66,56 @@ class College(Base):
     website_url = Column(String(500))
     established_year = Column(Integer)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class Club(Base):
+    __tablename__ = "clubs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text)
+    category = Column(String(100))
+    college_id = Column(Integer, ForeignKey("colleges.id"))
+    max_members = Column(Integer, default=100)
+    member_count = Column(Integer, default=0)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class OrganizationApplication(Base):
+    __tablename__ = "organization_applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    club_id = Column(Integer, ForeignKey("clubs.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    full_name = Column(String(255), nullable=False)
+    batch = Column(String(50))
+    year_of_study = Column(String(20))
+    sap_id = Column(String(20))
+    department_to_join = Column(String(255))
+    why_join = Column(Text)
+    what_contribute = Column(Text)
+    can_stay_longer_hours = Column(Boolean, default=False)
+    status = Column(String(20), default="pending")  # pending, approved, rejected
+    reviewed_by = Column(Integer, ForeignKey("users.id"))
+    reviewed_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String(50), default="general")
+    is_read = Column(Boolean, default=False)
+    action_url = Column(String(500))
+    priority = Column(String(20), default="medium")
+    scheduled_for = Column(DateTime)
+    read_at = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -75,7 +75,25 @@ const RecruitmentPage = () => {
       });
       if (!resp.ok) throw new Error('Failed to load details');
       const data = await resp.json();
-      setDetails(data);
+
+      // Also fetch application details for this organization
+      const orgResp = await fetch(`${API}/organizations/mine`, {
+        headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}` }
+      });
+      let applicationData = null;
+      if (orgResp.ok) {
+        const orgData = await orgResp.json();
+        if (orgData.id) {
+          const appResp = await fetch(`${API}/organizations/${orgData.id}/applications/${userId}`, {
+            headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}` }
+          });
+          if (appResp.ok) {
+            applicationData = await appResp.json();
+          }
+        }
+      }
+
+      setDetails({ ...data, application: applicationData });
     } catch (e: any) {
       setError(e?.message || 'Failed to load details');
     } finally {
@@ -357,3 +375,4 @@ const RecruitmentPage = () => {
   );
 };
 export default RecruitmentPage;
+

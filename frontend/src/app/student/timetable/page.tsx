@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  User, 
-  Plus, 
-  BookOpen, 
+import React, { useState, useEffect } from 'react';
+import { studentAPI } from '../../../services/roleBasedAPI';
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  User,
+  Plus,
+  BookOpen,
   AlertCircle,
   X,
   Trash2
@@ -50,6 +51,9 @@ const TimetablePage = () => {
   const [activeTab, setActiveTab] = useState<'timetable' | 'personal' | 'exams'>('timetable');
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
+  const [timetableData, setTimetableData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Sample data - would come from API in production
   const [classSchedule] = useState<ClassSchedule[]>([
@@ -287,6 +291,24 @@ const TimetablePage = () => {
     priority: 'medium'
   });
 
+  // Fetch timetable data from API
+  useEffect(() => {
+    const fetchTimetable = async () => {
+      try {
+        setLoading(true);
+        const data = await studentAPI.getTimetable();
+        setTimetableData(data);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load timetable');
+        console.error('Error fetching timetable:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTimetable();
+  }, []);
+
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const timeSlots = [
     '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
@@ -414,50 +436,107 @@ const TimetablePage = () => {
   );
 
   // Timetable view
-  const TimetableView = () => (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-      <div className="overflow-x-auto">
-        <div className="min-w-full">
-          {/* Header with days */}
-          <div className="grid grid-cols-8 gap-0 border-b">
-            <div className="p-4 bg-gray-50 font-semibold text-gray-700">Time</div>
-            {days.slice(0, 7).map(day => (
-              <div key={day} className="p-4 bg-gray-50 font-semibold text-gray-700 text-center">
-                {day}
+  const TimetableView = () => {
+    if (loading) {
+      return (
+        <div className="bg-white rounded-xl shadow-lg p-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading timetable...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="bg-white rounded-xl shadow-lg p-12">
+          <div className="text-center">
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Convert API data to component format
+    const convertApiToClasses = (apiData: any): ClassSchedule[] => {
+      if (!apiData || !Array.isArray(apiData)) return [];
+
+      return apiData.map((entry: any, index: number) => ({
+        id: String(entry.id || index),
+        subject: entry.subject || 'Unknown Subject',
+        instructor: entry.faculty_name || entry.instructor || 'TBA',
+        room: entry.room || 'TBA',
+        time: entry.start_time || 'TBA',
+        duration: entry.duration || '1h',
+        day: entry.day || 'Monday',
+        type: 'lecture' as const,
+        color: getColorForSubject(entry.subject || 'Unknown')
+      }));
+    };
+
+    const getColorForSubject = (subject: string): string => {
+      const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-red-500', 'bg-orange-500', 'bg-teal-500', 'bg-indigo-500'];
+      const index = subject.length % colors.length;
+      return colors[index];
+    };
+
+    const classesFromApi = convertApiToClasses(timetableData);
+    const getClassesForDayFromApi = (day: string) => {
+      return classesFromApi.filter(cls => cls.day === day);
+    };
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <div className="min-w-full">
+            {/* Header with days */}
+            <div className="grid grid-cols-8 gap-0 border-b">
+              <div className="p-4 bg-gray-50 font-semibold text-gray-700">Time</div>
+              {days.slice(0, 7).map(day => (
+                <div key={day} className="p-4 bg-gray-50 font-semibold text-gray-700 text-center">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Time slots */}
+            {timeSlots.map(time => (
+              <div key={time} className="grid grid-cols-8 gap-0 border-b border-gray-100">
+                <div className="p-3 bg-gray-50 text-sm font-medium text-gray-600">
+                  {time}
+                </div>
+                {days.slice(0, 7).map(day => {
+                  const dayClasses = getClassesForDayFromApi(day).filter(cls => cls.time === time);
+                  return (
+                    <div key={`${day}-${time}`} className="p-2 min-h-[80px] border-r border-gray-100">
+                      {dayClasses.map(cls => (
+                        <div
+                          key={cls.id}
+                          className={`${cls.color} text-white p-2 rounded-lg mb-1 text-xs`}
+                        >
+                          <div className="font-medium">{cls.subject}</div>
+                          <div className="text-xs opacity-90">{cls.room}</div>
+                          <div className="text-xs opacity-80">{cls.instructor}</div>
+                          <div className="text-xs opacity-70">{cls.duration}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>
-          
-          {/* Time slots */}
-          {timeSlots.map(time => (
-            <div key={time} className="grid grid-cols-8 gap-0 border-b border-gray-100">
-              <div className="p-3 bg-gray-50 text-sm font-medium text-gray-600">
-                {time}
-              </div>
-              {days.slice(0, 7).map(day => {
-                const dayClasses = getClassesForDay(day).filter(cls => cls.time === time);
-                return (
-                  <div key={`${day}-${time}`} className="p-2 min-h-[80px] border-r border-gray-100">
-                    {dayClasses.map(cls => (
-                      <div
-                        key={cls.id}
-                        className={`${cls.color} text-white p-2 rounded-lg mb-1 text-xs`}
-                      >
-                        <div className="font-medium">{cls.subject}</div>
-                        <div className="text-xs opacity-90">{cls.room}</div>
-                        <div className="text-xs opacity-80">{cls.instructor}</div>
-                        <div className="text-xs opacity-70">{cls.duration}</div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Personal events view
   const PersonalEventsView = () => (

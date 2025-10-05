@@ -34,10 +34,10 @@ def create_mysql_engine():
             pool_pre_ping=True,
             pool_recycle=3600
         )
-        logger.info("✅ MySQL engine created successfully")
+        logger.info("MySQL engine created successfully")
         return engine
     except Exception as e:
-        logger.error(f"❌ Failed to create MySQL engine: {str(e)}")
+        logger.error(f"Failed to create MySQL engine: {str(e)}")
         raise
 
 # Create engine instance
@@ -67,11 +67,11 @@ def get_mysql_connection():
             charset='utf8mb4',
             collation='utf8mb4_unicode_ci'
         )
-        logger.info("✅ Direct MySQL connection established")
+        logger.info("Direct MySQL connection established")
         return connection
     except Error as e:
         logger.error(
-            "❌ MySQL connection error: %s (host=%s port=%s user=%s db=%s)",
+            "MySQL connection error: %s (host=%s port=%s user=%s db=%s)",
             str(e),
             settings.MYSQL_HOST,
             settings.MYSQL_PORT,
@@ -122,10 +122,10 @@ def test_connection():
             cursor.execute("SELECT 1")
             result = cursor.fetchone()
             cursor.close()
-            logger.info(f"✅ Database connection test successful: {result}")
+            logger.info(f"Database connection test successful: {result}")
             return True
     except Exception as e:
-        logger.error(f"❌ Database connection test failed: {str(e)}")
+        logger.error(f"Database connection test failed: {str(e)}")
         return False
 
 # Initialize database tables
@@ -133,13 +133,13 @@ def init_db():
     """Initialize database tables"""
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database tables initialized")
+        logger.info("Database tables initialized")
     except Exception as e:
-        logger.error(f"❌ Failed to initialize database tables: {str(e)}")
+        logger.error(f"Failed to initialize database tables: {str(e)}")
         raise
 
 # Legacy function name for backward compatibility
 def get_supabase():
     """Legacy function - now returns MySQL connection"""
-    logger.warning("⚠️  get_supabase() is deprecated, use get_db() or get_mysql_connection() instead")
+    logger.warning("get_supabase() is deprecated, use get_db() or get_mysql_connection() instead")
     return get_mysql_connection()

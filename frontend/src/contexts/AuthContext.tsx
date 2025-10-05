@@ -8,13 +8,15 @@ type AuthAction =
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'LOGIN_SUCCESS'; payload: { user: User; token: string } }
   | { type: 'LOGOUT' }
-  | { type: 'SET_USER'; payload: User };
+  | { type: 'SET_USER'; payload: User }
+  | { type: 'SET_INTENDED_ROUTE'; payload: string | null };
 
 const initialState: AuthState = {
   user: null,
   token: null,
   isAuthenticated: false,
   isLoading: true,
+  intendedRoute: null,
 };
 
 const authReducer = (state: AuthState, action: AuthAction): AuthState => {
@@ -28,6 +30,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         token: action.payload.token,
         isAuthenticated: true,
         isLoading: false,
+        intendedRoute: null,
       };
     case 'LOGOUT':
       return {
@@ -36,6 +39,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         token: null,
         isAuthenticated: false,
         isLoading: false,
+        intendedRoute: null,
       };
     case 'SET_USER':
       return {
@@ -43,6 +47,11 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         user: action.payload,
         isAuthenticated: true,
         isLoading: false,
+      };
+    case 'SET_INTENDED_ROUTE':
+      return {
+        ...state,
+        intendedRoute: action.payload,
       };
     default:
       return state;
@@ -53,6 +62,7 @@ interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (userData: RegisterFormData) => Promise<void>;
   logout: () => void;
+  setIntendedRoute: (path: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -160,11 +170,16 @@ role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
     }
   };
 
+  const setIntendedRoute = (path: string | null) => {
+    dispatch({ type: 'SET_INTENDED_ROUTE', payload: path });
+  };
+
   const value = {
     ...state,
     login,
     register,
     logout,
+    setIntendedRoute,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

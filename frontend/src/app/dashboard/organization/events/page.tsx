@@ -100,42 +100,67 @@ const EventsPage = () => {
         {success && <div className="bg-green-500/10 border border-green-500/40 text-green-300 px-4 py-2 rounded">{success}</div>}
 
         {canCreate && (
-          <form onSubmit={handleCreate} className="bg-black/40 border border-white/10 rounded-xl p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">Title</label>
-                <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">Venue</label>
-                <input value={form.venue} onChange={e=>setForm({...form,venue:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm text-gray-300 mb-1">Description</label>
-                <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="w-full px-3 py-2 rounded bg:white/5 bg-white/5 border border-white/10 text-white" required />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">Date</label>
-                <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">Start</label>
-                <input type="time" value={form.start} onChange={e=>setForm({...form,start:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">End</label>
-                <input type="time" value={form.end} onChange={e=>setForm({...form,end:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">Max participants</label>
-                <input type="number" min={1} value={form.max_participants} onChange={e=>setForm({...form,max_participants:parseInt(e.target.value||'0',10)})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" />
+          <>
+            {/* Other Organizations' Upcoming Events */}
+            <div className="bg-black/40 border border-white/10 rounded-xl p-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Other Organizations' Upcoming Events</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {loading ? (
+                  <div className="text-gray-300">Loading events...</div>
+                ) : events.filter(ev => ev.organizer_name !== user?.full_name).length === 0 ? (
+                  <div className="text-gray-400">No upcoming events from other organizations.</div>
+                ) : (
+                  events.filter(ev => ev.organizer_name !== user?.full_name).map(ev => (
+                    <div key={ev.id} className="bg-gray-800/50 border border-gray-600/30 rounded-lg p-4">
+                      <div className="text-white font-medium text-sm mb-1">{ev.title}</div>
+                      <div className="text-gray-300 text-xs mb-2">{ev.organizer_name}</div>
+                      <div className="text-gray-400 text-xs flex items-center mb-1"><Calendar className="w-3 h-3 mr-1" /> {new Date(ev.start_time).toLocaleDateString()}</div>
+                      <div className="text-gray-400 text-xs flex items-center mb-1"><Clock className="w-3 h-3 mr-1" /> {new Date(ev.start_time).toLocaleTimeString()} - {new Date(ev.end_time).toLocaleTimeString()}</div>
+                      <div className="text-gray-400 text-xs flex items-center"><MapPin className="w-3 h-3 mr-1" /> {ev.venue}</div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-            <button disabled={creating} type="submit" className="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
-              <Plus className="w-4 h-4 mr-2" />
-              {creating ? 'Creating...' : 'Create Event'}
-            </button>
-          </form>
+
+            <form onSubmit={handleCreate} className="bg-black/40 border border-white/10 rounded-xl p-6 space-y-4">
+              <h2 className="text-xl font-semibold text-white mb-4">Create New Event</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">Title</label>
+                  <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">Venue</label>
+                  <input value={form.venue} onChange={e=>setForm({...form,venue:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-gray-300 mb-1">Description</label>
+                  <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="w-full px-3 py-2 rounded bg:white/5 bg-white/5 border border-white/10 text-white" required />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">Date</label>
+                  <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">Start</label>
+                  <input type="time" value={form.start} onChange={e=>setForm({...form,start:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">End</label>
+                  <input type="time" value={form.end} onChange={e=>setForm({...form,end:e.target.value})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" required />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">Max participants</label>
+                  <input type="number" min={1} value={form.max_participants} onChange={e=>setForm({...form,max_participants:parseInt(e.target.value||'0',10)})} className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white" />
+                </div>
+              </div>
+              <button disabled={creating} type="submit" className="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+                <Plus className="w-4 h-4 mr-2" />
+                {creating ? 'Creating...' : 'Create Event'}
+              </button>
+            </form>
+          </>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

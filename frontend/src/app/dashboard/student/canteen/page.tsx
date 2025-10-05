@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +35,7 @@ interface MenuItem {
 
 const StudentCanteen = () => {
   const { user } = useAuth();
+  const router = useRouter();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -185,54 +187,98 @@ const StudentCanteen = () => {
 
   const handlePayment = async (method: 'pay_now' | 'pay_later') => {
     setPaymentMethod(method);
-    if (method === 'pay_now') {
-      // Store cart and amount, redirect to payment page
-      localStorage.setItem('canteen_cart', JSON.stringify(cart));
-      localStorage.setItem('canteen_amount', String(getTotalAmount()));
-      window.location.href = '/dashboard/student/canteen/payment';
-      return;
-    }
+    setOrderError('');
+
     try {
       const orderData = {
         items: cart,
         total_amount: getTotalAmount(),
-        payment_method: method,
-        payment_status: 'pending'
+        payment_method: method
       };
+
       const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${API}/canteen/order`, {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+      
+      console.log('🚀 Making API call to:', `${API}/canteen/payment/initiate`);
+      console.log('🚀 Order data:', orderData);
+      console.log('🚀 Payment method:', method);
+      
+      const resp = await fetch(`${API}/canteen/payment/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          'Accept': 'application/json',
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify(orderData)
       });
-
-      if (!response.ok) {
-        throw new Error('Unable to place order. Please try again.');
+      if (resp.status === 401) {
+        setOrderError('Unauthorized. Please login again.');
+        return;
       }
+      if (!resp.ok) {
+        let message = `Failed to initiate payment (HTTP ${resp.status})`;
+        try {
+          const text = await resp.text();
+          try {
+            const data = JSON.parse(text);
+            message = data?.detail || data?.message || message;
+          } catch {
+            if (text) message = text;
+          }
+        } catch {}
+        setOrderError(message);
+        return;
+      }
+      const result = await resp.json();
+      console.log('🔍 Payment initiate result:', result);
 
-      const result = await response.json();
-      const generatedOrder = {
-        id: String(result.order_id),
-        items: cart,
-        total_amount: getTotalAmount(),
-        payment_method: method,
-        payment_status: result.payment_status || 'pending',
-        order_date: new Date(result.order_date || Date.now()),
-        qr_code: result.qr_url,
-        pickup_code: (result.qr_token || '').slice(0,8).toUpperCase()
-      };
-      
-      setOrderDetails(generatedOrder);
-      setOrderPlaced(true);
-      setCart([]);
-      setShowCheckout(false);
-      setOrderError('');
-    } catch (error: any) {
+      if (method === 'pay_now') {
+        // Redirect to payment gateway - FORCE CORRECT URL
+        const defaultUrl = `/dashboard/student/canteen/payment/gateway?order_token=${result.order_token}&amount=${result.total_amount}`;
+        // TEMPORARILY IGNORE BACKEND URL AND USE DEFAULT
+        const redirectUrl = defaultUrl;
+        console.log('🎯 Redirecting to:', redirectUrl);
+        console.log('🎯 Default URL would be:', defaultUrl);
+        console.log('🎯 Backend payment_url:', result.payment_url);
+        alert(`About to redirect to: ${redirectUrl}`);
+        setShowCheckout(false);
+        // Prefer client-side navigation to avoid losing app state
+        router.push(redirectUrl);
+        return;
+      } else {
+        // Pay Later - Show QR code immediately
+        const generatedOrder = {
+          id: String(result.order_id),
+          items: cart,
+          total_amount: result.total_amount,
+          payment_method: method,
+          payment_status: result.payment_status,
+          order_date: new Date(),
+          qr_code: result.qr_url,
+          pickup_code: result.qr_token.slice(0,8).toUpperCase()
+        };
+        
+        setOrderDetails(generatedOrder);
+        setOrderPlaced(true);
+        setCart([]);
+        setShowCheckout(false);
+        setOrderError('');
+        
+        // Auto-download QR code for pay later
+        setTimeout(() => {
+          const link = document.createElement('a');
+          link.href = result.qr_url;
+          link.download = `canteen_order_${result.order_id}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }, 1000);
+      }
+    } catch (error: unknown) {
       console.error('Error creating order:', error);
-      setOrderError(error?.message || 'Failed to place order. Please try again later.');
+      const message = error instanceof Error ? error.message : 'Failed to place order. Please try again later.';
+      setOrderError(message);
     }
   };
 
@@ -548,6 +594,15 @@ const StudentCanteen = () => {
                   <Clock className="w-5 h-5" />
                   <span>Pay Later</span>
                 </button>
+                {orderError && (
+                  <div
+                    className="mt-2 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2"
+                    role="alert"
+                    aria-live="assertive"
+                  >
+                    {orderError}
+                  </div>
+                )}
               </div>
             </div>
 

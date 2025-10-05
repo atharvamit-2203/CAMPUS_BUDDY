@@ -42,6 +42,7 @@ export interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  intendedRoute: string | null;
 }
 
 export interface RegisterFormData {
@@ -61,4 +62,7 @@ role: 'student' | 'faculty' | 'organization' | 'staff';
   organization_type?: string;
   bio?: string;
   phone_number?: string;
+  // AI recommendation fields
+  interests?: string[];
+  skills?: string[];
 }

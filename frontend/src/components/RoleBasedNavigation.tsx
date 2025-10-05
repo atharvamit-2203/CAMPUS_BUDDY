@@ -41,6 +41,7 @@ type NotificationItem = {
 
 import dynamic from 'next/dynamic';
 const GlobalChatbot = dynamic(() => import('./GlobalChatbot'), { ssr: false });
+import ThemeToggle from './ThemeToggle';
 
 const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
   const { user, logout, token } = useAuth();
@@ -221,56 +222,59 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
               <p className="text-gray-400 text-sm capitalize">{user.role}</p>
             </div>
           </div>
-          <div className="relative" ref={panelRef}>
-            <button
-              className="relative p-2 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white"
-              title="Notifications"
-              onClick={async () => {
-                const next = !openPanel;
-                setOpenPanel(next);
-                if (next) {
-                  await fetchNotifications();
-                }
-              }}
-            >
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {openPanel && (
-              <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-white/10 rounded-lg shadow-xl z-50">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
-                  <span className="text-white font-medium">Notifications</span>
-                  <button onClick={markAllAsRead} className="text-xs text-blue-400 hover:text-blue-300">Mark all as read</button>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {loadingPanel ? (
-                    <div className="flex items-center justify-center py-6 text-gray-400">
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading...
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="p-4 text-gray-400 text-sm">No notifications</div>
-                  ) : (
-                    <ul className="divide-y divide-white/10">
-                      {notifications.map((n) => (
-                        <li key={n.id} className={`p-4 ${n.read ? 'opacity-70' : ''}`}>
-                          <div className="text-sm font-semibold text-white">{n.title || 'Notification'}</div>
-                          {n.message && <div className="text-sm text-gray-300 mt-1">{n.message}</div>}
-                          {n.created_at && (
-                            <div className="text-xs text-gray-500 mt-1">{new Date(n.created_at).toLocaleString()}</div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            )}
+          <div className="flex items-center space-x-2">
+            <div className="relative" ref={panelRef}>
+              <button
+                className="relative p-2 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white"
+                title="Notifications"
+                onClick={async () => {
+                  const next = !openPanel;
+                  setOpenPanel(next);
+                  if (next) {
+                    await fetchNotifications();
+                  }
+                }}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+            <ThemeToggle />
           </div>
+
+          {openPanel && (
+            <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-white/10 rounded-lg shadow-xl z-50">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
+                <span className="text-white font-medium">Notifications</span>
+                <button onClick={markAllAsRead} className="text-xs text-blue-400 hover:text-blue-300">Mark all as read</button>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {loadingPanel ? (
+                  <div className="flex items-center justify-center py-6 text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading...
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="p-4 text-gray-400 text-sm">No notifications</div>
+                ) : (
+                  <ul className="divide-y divide-white/10">
+                    {notifications.map((n) => (
+                      <li key={n.id} className={`p-4 ${n.read ? 'opacity-70' : ''}`}>
+                        <div className="text-sm font-semibold text-white">{n.title || 'Notification'}</div>
+                        {n.message && <div className="text-sm text-gray-300 mt-1">{n.message}</div>}
+                        {n.created_at && (
+                          <div className="text-xs text-gray-500 mt-1">{new Date(n.created_at).toLocaleString()}</div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

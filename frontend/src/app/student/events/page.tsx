@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  Search, 
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Search,
   Filter,
   Star,
   Users,
@@ -30,6 +30,7 @@ import {
   Bookmark,
   Bell
 } from 'lucide-react';
+import { studentAPI } from '../../../services/roleBasedAPI';
 
 // Type definitions
 interface Event {
@@ -75,6 +76,33 @@ interface RegisteredEvent {
   reminder: boolean;
 }
 
+interface ApiEvent {
+  id: number;
+  title: string;
+  description?: string;
+  date: string;
+  time: string;
+  end_time?: string;
+  location?: string;
+  venue?: string;
+  image?: string;
+  type?: string;
+  organizer?: string;
+  capacity?: number;
+  registrations?: number;
+  price?: number;
+  tags?: string[];
+  rating?: number;
+  reviews?: number;
+  featured?: boolean;
+  trending?: boolean;
+  registration_required?: boolean;
+  registration_link?: string;
+  contact_email?: string;
+  prerequisites?: string[];
+  rewards?: string[];
+}
+
 const EventDiscoveryPage = () => {
   const [activeTab, setActiveTab] = useState<'browse' | 'registered' | 'calendar' | 'recommendations'>('browse');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -84,210 +112,53 @@ const EventDiscoveryPage = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'calendar'>('grid');
   const [sortBy, setSortBy] = useState<'date' | 'popularity' | 'rating' | 'trending'>('date');
   const [registeredEvents, setRegisteredEvents] = useState<RegisteredEvent[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Sample events data with enhanced features
-  const [events] = useState<Event[]>([
-    // Featured Events
-    {
-      id: '1',
-      title: 'Tech Innovation Summit 2024',
-      description: 'Join industry leaders and innovators for a day of cutting-edge technology discussions, startup pitches, and networking opportunities.',
-      date: '2024-02-15',
-      time: '09:00',
-      endTime: '17:00',
-      location: 'Main Auditorium',
-      image: '/api/placeholder/400/250',
-      category: 'career',
-      organizer: 'Tech Innovation Club',
-      capacity: 500,
-      registrationCount: 342,
-      price: 0,
-      tags: ['technology', 'innovation', 'networking', 'startup'],
-      rating: 4.8,
-      reviews: 156,
-      featured: true,
-      trending: true,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/tech-summit-2024',
-      contactEmail: 'tech.club@college.edu',
-      prerequisites: [],
-      rewards: ['Certificate of Participation', 'Networking Opportunities', 'Goodies']
-    },
-    {
-      id: '2',
-      title: 'Annual Cultural Fest - Spectrum 2024',
-      description: 'A celebration of diversity and creativity featuring music, dance, drama, and art from various cultures around the world.',
-      date: '2024-02-20',
-      time: '18:00',
-      endTime: '22:00',
-      location: 'Campus Grounds',
-      image: '/api/placeholder/400/250',
-      category: 'cultural',
-      organizer: 'Cultural Committee',
-      capacity: 2000,
-      registrationCount: 1450,
-      price: 100,
-      tags: ['culture', 'music', 'dance', 'art', 'diversity'],
-      rating: 4.9,
-      reviews: 320,
-      featured: true,
-      trending: true,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/spectrum-2024',
-      contactEmail: 'cultural@college.edu',
-      prerequisites: [],
-      rewards: ['Cultural Experience', 'Food Stalls', 'Performances']
-    },
-    {
-      id: '3',
-      title: 'AI/ML Workshop: Deep Learning Fundamentals',
-      description: 'Hands-on workshop covering the basics of deep learning, neural networks, and practical implementation using TensorFlow.',
-      date: '2024-02-18',
-      time: '14:00',
-      endTime: '17:00',
-      location: 'Computer Lab A',
-      image: '/api/placeholder/400/250',
-      category: 'workshop',
-      organizer: 'Data Science Society',
-      capacity: 40,
-      registrationCount: 35,
-      price: 0,
-      tags: ['AI', 'machine learning', 'deep learning', 'tensorflow', 'programming'],
-      rating: 4.7,
-      reviews: 28,
-      featured: false,
-      trending: true,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/ai-ml-workshop',
-      contactEmail: 'datascience@college.edu',
-      prerequisites: ['Basic Python Knowledge', 'Linear Algebra Basics'],
-      rewards: ['Certificate', 'Workshop Materials', 'Project Template']
-    },
-    {
-      id: '4',
-      title: 'Inter-College Basketball Championship',
-      description: 'Annual basketball tournament featuring teams from colleges across the city. Witness exciting matches and cheer for your team!',
-      date: '2024-02-22',
-      time: '10:00',
-      endTime: '18:00',
-      location: 'Sports Complex',
-      image: '/api/placeholder/400/250',
-      category: 'sports',
-      organizer: 'Sports Committee',
-      capacity: 1000,
-      registrationCount: 750,
-      price: 50,
-      tags: ['basketball', 'sports', 'competition', 'inter-college'],
-      rating: 4.5,
-      reviews: 89,
-      featured: false,
-      trending: false,
-      registrationRequired: false,
-      contactEmail: 'sports@college.edu',
-      prerequisites: [],
-      rewards: ['Exciting Matches', 'Refreshments', 'Prizes for Winners']
-    },
-    {
-      id: '5',
-      title: 'Career Guidance Seminar',
-      description: 'Expert guidance on career planning, resume building, interview preparation, and industry insights from HR professionals.',
-      date: '2024-02-25',
-      time: '11:00',
-      endTime: '13:00',
-      location: 'Seminar Hall B',
-      image: '/api/placeholder/400/250',
-      category: 'career',
-      organizer: 'Career Development Cell',
-      capacity: 200,
-      registrationCount: 156,
-      price: 0,
-      tags: ['career', 'guidance', 'resume', 'interview', 'professional'],
-      rating: 4.6,
-      reviews: 92,
-      featured: false,
-      trending: false,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/career-seminar',
-      contactEmail: 'career@college.edu',
-      prerequisites: [],
-      rewards: ['Career Guidance', 'Resume Templates', 'Interview Tips']
-    },
-    {
-      id: '6',
-      title: 'Photography Competition - Moments',
-      description: 'Showcase your photography skills in various categories including nature, portrait, and street photography.',
-      date: '2024-02-28',
-      time: '15:00',
-      endTime: '17:00',
-      location: 'Art Gallery',
-      image: '/api/placeholder/400/250',
-      category: 'competition',
-      organizer: 'Photography Club',
-      capacity: 100,
-      registrationCount: 67,
-      price: 75,
-      tags: ['photography', 'competition', 'art', 'creative'],
-      rating: 4.4,
-      reviews: 41,
-      featured: false,
-      trending: false,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/photo-competition',
-      contactEmail: 'photo.club@college.edu',
-      prerequisites: ['Basic Photography Knowledge'],
-      rewards: ['Cash Prizes', 'Certificates', 'Portfolio Feature']
-    },
-    {
-      id: '7',
-      title: 'Entrepreneurship Bootcamp',
-      description: 'Intensive 3-day bootcamp covering business planning, funding strategies, and startup ecosystem insights.',
-      date: '2024-03-01',
-      time: '09:00',
-      endTime: '17:00',
-      location: 'Business School',
-      image: '/api/placeholder/400/250',
-      category: 'workshop',
-      organizer: 'Entrepreneurship Cell',
-      capacity: 60,
-      registrationCount: 48,
-      price: 200,
-      tags: ['entrepreneurship', 'business', 'startup', 'funding'],
-      rating: 4.8,
-      reviews: 34,
-      featured: true,
-      trending: true,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/entrepreneur-bootcamp',
-      contactEmail: 'entrepreneur@college.edu',
-      prerequisites: ['Business Idea (Optional)', 'Passion for Innovation'],
-      rewards: ['Business Plan Template', 'Mentorship', 'Networking']
-    },
-    {
-      id: '8',
-      title: 'Music Night - Unplugged',
-      description: 'An evening of soulful music featuring acoustic performances by talented students and guest artists.',
-      date: '2024-03-05',
-      time: '19:00',
-      endTime: '22:00',
-      location: 'Amphitheater',
-      image: '/api/placeholder/400/250',
-      category: 'cultural',
-      organizer: 'Music Society',
-      capacity: 300,
-      registrationCount: 210,
-      price: 80,
-      tags: ['music', 'acoustic', 'performance', 'entertainment'],
-      rating: 4.7,
-      reviews: 115,
-      featured: false,
-      trending: false,
-      registrationRequired: true,
-      registrationLink: 'https://forms.gle/music-night',
-      contactEmail: 'music@college.edu',
-      prerequisites: [],
-      rewards: ['Musical Experience', 'Refreshments', 'Open Mic Opportunity']
-    }
-  ]);
+  // Fetch events from API
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        setLoading(true);
+        const data = await studentAPI.getUpcomingEvents();
+        // Transform API data to match component interface
+        const transformedEvents: Event[] = (data as unknown as ApiEvent[]).map((event: ApiEvent) => ({
+          id: event.id.toString(),
+          title: event.title,
+          description: event.description || '',
+          date: event.date,
+          time: event.time,
+          endTime: event.end_time,
+          location: event.location || event.venue || '',
+          image: event.image || '/api/placeholder/400/250',
+          category: event.type as Event['category'] || 'other',
+          organizer: event.organizer || 'Campus Events',
+          capacity: event.capacity,
+          registrationCount: event.registrations || 0,
+          price: event.price || 0,
+          tags: event.tags || [],
+          rating: event.rating,
+          reviews: event.reviews,
+          featured: event.featured || false,
+          trending: event.trending || false,
+          registrationRequired: event.registration_required || false,
+          registrationLink: event.registration_link,
+          contactEmail: event.contact_email,
+          prerequisites: event.prerequisites || [],
+          rewards: event.rewards || []
+        }));
+        setEvents(transformedEvents);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load events');
+        console.error('Error fetching events:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+  }, []);
 
   const [userPreferences] = useState<UserPreferences>({
     favoriteCategories: ['workshop', 'career'],
@@ -648,9 +519,37 @@ const EventDiscoveryPage = () => {
   };
 
   // Browse events view
-  const BrowseEventsView = () => (
-    <div className="space-y-6">
-      <FilterPanel />
+  const BrowseEventsView = () => {
+    if (loading) {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading events...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="text-center">
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <FilterPanel />
       
       {/* Category filters */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -732,7 +631,8 @@ const EventDiscoveryPage = () => {
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   // Registered events view
   const RegisteredEventsView = () => {

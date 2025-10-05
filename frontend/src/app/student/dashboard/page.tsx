@@ -46,6 +46,7 @@ interface StudentProfile {
 interface RecommendedClub {
   id: string;
   name: string;
+  description: string;
   memberCount: number;
   logoUrl?: string;
 }
@@ -86,12 +87,12 @@ const sampleProfile: StudentProfile = {
 };
 
 const sampleClubs: RecommendedClub[] = [
-  { id: '1', name: 'AI & Machine Learning Society', memberCount: 248 },
-  { id: '2', name: 'Web Development Club', memberCount: 156 },
-  { id: '3', name: 'Entrepreneurship Cell', memberCount: 189 },
-  { id: '4', name: 'Blockchain Technology Group', memberCount: 97 },
-  { id: '5', name: 'UI/UX Design Community', memberCount: 134 },
-  { id: '6', name: 'Competitive Programming Club', memberCount: 203 }
+  { id: '1', name: 'AI & Machine Learning Society', description: 'Explore artificial intelligence and machine learning technologies', memberCount: 248 },
+  { id: '2', name: 'Web Development Club', description: 'Learn modern web development technologies and frameworks', memberCount: 156 },
+  { id: '3', name: 'Entrepreneurship Cell', description: 'Foster entrepreneurial thinking and startup culture', memberCount: 189 },
+  { id: '4', name: 'Blockchain Technology Group', description: 'Dive into blockchain, crypto, and Web3 technologies', memberCount: 97 },
+  { id: '5', name: 'UI/UX Design Community', description: 'Master user interface and user experience design', memberCount: 134 },
+  { id: '6', name: 'Competitive Programming Club', description: 'Enhance problem-solving skills through competitive coding', memberCount: 203 }
 ];
 
 const sampleNetworking: NetworkingProfile[] = [
@@ -203,12 +204,37 @@ const [activeTab, setActiveTab] = useState<'overview' | 'networking' | 'events' 
         });
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data?.clubs)) setRecommendedClubs(data.clubs.map((c: any) => ({ id: String(c.id), name: c.name, memberCount: c.member_count || 0 })));
-          if (Array.isArray(data?.networking)) setNetworkingProfiles(data.networking.map((n: any) => ({ id: String(n.id), fullName: n.full_name, course: n.course, commonInterests: [], avatarUrl: '' })));
-          if (Array.isArray(data?.events)) setUpcomingEvents(data.events.map((e: any) => ({ id: String(e.id), title: e.title, date: new Date(e.start_time).toISOString().slice(0,10), time: '', location: e.venue, type: 'workshop' as const })));
+          if (Array.isArray(data?.clubs)) {
+            setRecommendedClubs(data.clubs.map((c: {id: number, name: string, description: string, member_count?: number}) => ({
+              id: String(c.id),
+              name: c.name,
+              description: c.description || '',
+              memberCount: c.member_count || 0
+            })));
+          }
+          if (Array.isArray(data?.networking)) {
+            setNetworkingProfiles(data.networking.map((n: {id: number, full_name: string, course: string}) => ({
+              id: String(n.id),
+              fullName: n.full_name,
+              course: n.course,
+              commonInterests: [],
+              avatarUrl: ''
+            })));
+          }
+          if (Array.isArray(data?.events)) {
+            setUpcomingEvents(data.events.map((e: {id: number, title: string, start_time: string, venue?: string}) => ({
+              id: String(e.id),
+              title: e.title,
+              date: new Date(e.start_time).toISOString().slice(0,10),
+              time: '',
+              location: e.venue || '',
+              type: 'workshop' as const
+            })));
+          }
         }
       } catch (e) {
-        // ignore and keep sample data
+        console.error('Error fetching recommendations:', e);
+        // keep sample data as fallback
       }
     };
     if (isAuthenticated) fetchRecommendations();
@@ -393,51 +419,60 @@ onClick={() => setActiveTab(id as 'overview' | 'networking' | 'events' | 'timeta
   );
 
 // Organizations Panel for Overview
-  const MyOrganizationsPanel = () => {
-    const [orgs, setOrgs] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    React.useEffect(() => {
-      const run = async () => {
-        try {
-          setLoading(true);
-          const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-          const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
-          const resp = await fetch(`${API}/organizations/my`, { headers: { Authorization: `Bearer ${token}` }});
-          if (!resp.ok) throw new Error('Failed to load organizations');
-          const data = await resp.json();
-          setOrgs(Array.isArray(data) ? data : (data.organizations || []));
-        } catch (e:any) {
-          setError(e?.message || 'Failed to load organizations');
-        } finally { setLoading(false); }
-      };
-      run();
-    }, []);
-    return (
-      <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-        <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
-          <Users className="w-6 h-6 text-blue-500 mr-3" />
-          My Organizations
-        </h3>
-        {error && <div className="text-red-600 text-sm mb-2">{error}</div>}
-        {loading ? (
-          <div className="text-gray-600">Loading...</div>
-        ) : orgs.length === 0 ? (
-          <div className="text-gray-600">You have not joined any organizations yet.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {orgs.map((o:any) => (
-              <div key={o.id} className="p-4 border border-gray-200 rounded-xl">
-                <div className="font-semibold text-gray-900">{o.organization_name || o.name}</div>
-                {o.category && <div className="text-xs text-gray-500 mt-1">{o.category}</div>}
-                <div className="text-xs text-gray-500 mt-2">Joined: {o.joined_at ? new Date(o.joined_at).toLocaleDateString() : '-'}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
+   const MyOrganizationsPanel = () => {
+     interface Organization {
+       id: string | number;
+       organization_name?: string;
+       name?: string;
+       category?: string;
+       joined_at?: string;
+     }
+
+     const [orgs, setOrgs] = useState<Organization[]>([]);
+     const [loading, setLoading] = useState(false);
+     const [error, setError] = useState('');
+     React.useEffect(() => {
+       const run = async () => {
+         try {
+           setLoading(true);
+           const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+           const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+           const resp = await fetch(`${API}/clubs/my`, { headers: { Authorization: `Bearer ${token}` }});
+           if (!resp.ok) throw new Error('Failed to load clubs');
+           const data = await resp.json();
+           setOrgs(Array.isArray(data) ? data : (data.clubs || []));
+         } catch (e: unknown) {
+           const errorMessage = e instanceof Error ? e.message : 'Failed to load organizations';
+           setError(errorMessage);
+         } finally { setLoading(false); }
+       };
+       run();
+     }, []);
+     return (
+       <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+         <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+           <Users className="w-6 h-6 text-blue-500 mr-3" />
+           My Clubs
+         </h3>
+         {error && <div className="text-red-600 text-sm mb-2">{error}</div>}
+         {loading ? (
+           <div className="text-gray-600">Loading...</div>
+         ) : orgs.length === 0 ? (
+           <div className="text-gray-600">You have not joined any clubs yet.</div>
+         ) : (
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             {orgs.map((o: Organization) => (
+               <div key={o.id} className="p-4 border border-gray-200 rounded-xl">
+                 <div className="font-semibold text-gray-900">{o.organization_name || o.name}</div>
+                 {o.category && <div className="text-xs text-gray-500 mt-1">{o.category}</div>}
+                 <div className="text-xs text-gray-500 mt-2">Joined: {o.joined_at ? new Date(o.joined_at).toLocaleDateString() : '-'}</div>
+               </div>
+             ))}
+           </div>
+         )}
+       </div>
+     );
+   };
 
   // Overview Tab Content
   const OverviewContent = () => (
@@ -663,7 +698,9 @@ onClick={() => setActiveTab(id as 'overview' | 'networking' | 'events' | 'timeta
               </div>
               
               <h4 className="font-bold text-gray-900 text-lg mb-2 group-hover:text-purple-600 transition-colors duration-200">{club.name}</h4>
-              
+
+              <p className="text-gray-600 text-sm mb-4 line-clamp-2">{club.description}</p>
+
               <div className="flex items-center space-x-2 mb-4">
                 <div className="flex -space-x-2">
                   {[1,2,3].map((i) => (

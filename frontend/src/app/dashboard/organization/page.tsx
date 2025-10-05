@@ -68,8 +68,23 @@ interface Meeting {
 }
 
 const OrganizationDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading, setIntendedRoute } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated || !user) {
+      setIntendedRoute('/dashboard/organization');
+      router.replace('/login');
+      return;
+    }
+
+    if (user.role !== 'organization') {
+      setIntendedRoute('/dashboard/organization');
+      router.replace(`/dashboard/${user.role}`);
+    }
+  }, [isAuthenticated, isLoading, router, setIntendedRoute, user]);
   const [activeTab, setActiveTab] = useState('overview');
   const [events, setEvents] = useState<Event[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -585,7 +600,7 @@ const OrganizationDashboard = () => {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-white">Organization Dashboard</h1>
-              <p className="text-gray-400">{user?.organization_type || 'Corporate'} Organization</p>
+              <p className="text-gray-400">Club Management</p>
             </div>
             
             {/* Tab Navigation */}

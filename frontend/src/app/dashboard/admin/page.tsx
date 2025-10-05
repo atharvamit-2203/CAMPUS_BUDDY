@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import { 
@@ -82,8 +83,25 @@ interface TimetableEntry {
 import { canteenAPI } from '@/services/api';
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading, setIntendedRoute } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated || !user) {
+      setIntendedRoute('/dashboard/admin');
+      router.replace('/login');
+      return;
+    }
+
+    if (user.role !== 'admin') {
+      setIntendedRoute('/dashboard/admin');
+      router.replace(`/dashboard/${user.role}`);
+    }
+  }, [isAuthenticated, isLoading, router, setIntendedRoute, user]);
+
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [colleges, setColleges] = useState<College[]>([]);

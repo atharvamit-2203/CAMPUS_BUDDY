@@ -6,24 +6,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import CampusMiniMap from '@/components/CampusMiniMap';
 import { 
-  TrendingUp, 
   Calendar, 
   Users, 
-  Trophy, 
   Clock,
   UserPlus,
   BookOpen,
   Coffee,
   Award,
   ChevronRight,
-  Bell,
-  Activity
+  Bell
 } from 'lucide-react';
 
 // Dynamic data will be loaded from backend APIs; removed mock data.
 
-function StudentOrganizationsCard() {
-  const [orgs, setOrgs] = useState<any[]>([]);
+function StudentClubsCard() {
+  const [clubs, setClubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -33,24 +30,20 @@ function StudentOrganizationsCard() {
         const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
         
-        // Try clubs endpoint first (preferred), fallback to organizations
-        let resp = await fetch(`${API}/my-clubs`, { headers: { Authorization: `Bearer ${token}` }});
-        if (!resp.ok) {
-          // Fallback to organizations endpoint
-          resp = await fetch(`${API}/organizations/my`, { headers: { Authorization: `Bearer ${token}` }});
-        }
+        // Use clubs endpoint
+        const resp = await fetch(`${API}/clubs/my`, { headers: { Authorization: `Bearer ${token}` }});
         
-        if (!resp.ok) throw new Error('Failed to load organizations');
+        if (!resp.ok) throw new Error('Failed to load clubs');
         const data = await resp.json();
-        const orgList = Array.isArray(data) ? data : (data.organizations || data.clubs || []);
+        const clubList = Array.isArray(data) ? data : [];
         // Only show approved/active memberships
-        const activeOrgs = orgList.filter((o:any) => {
-          const status = o.status || o.membership_status;
-          return !status || ['active', 'member'].includes(status);
+        const activeClubs = clubList.filter((c:any) => {
+          const status = c.status || c.membership_status;
+          return !status || ['active', 'member', 'approved'].includes(status);
         });
-        setOrgs(activeOrgs);
+        setClubs(activeClubs);
       } catch (e: any) {
-        setError(e?.message || 'Failed to load organizations');
+        setError(e?.message || 'Failed to load clubs');
       } finally { setLoading(false); }
     };
     run();
@@ -61,7 +54,7 @@ function StudentOrganizationsCard() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-white flex items-center">
           <Users className="w-5 h-5 mr-2 text-blue-400" />
-          My Organizations
+          My Clubs
         </h2>
         <a 
           href="/dashboard/student/organizations" 
@@ -73,35 +66,35 @@ function StudentOrganizationsCard() {
       {error && <div className="bg-red-500/10 border border-red-500/40 text-red-300 px-4 py-2 rounded mb-4">{error}</div>}
       {loading ? (
         <div className="text-gray-300">Loading...</div>
-      ) : orgs.length === 0 ? (
+      ) : clubs.length === 0 ? (
         <div className="text-center py-8">
           <Users className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <div className="text-gray-400 mb-4">You haven't joined any organizations yet.</div>
+          <div className="text-gray-400 mb-4">You haven&apos;t joined any clubs yet.</div>
           <a 
             href="/dashboard/student/organizations" 
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition-colors inline-flex items-center"
           >
             <UserPlus className="w-4 h-4 mr-2" />
-            Explore Organizations
+            Explore Clubs
           </a>
         </div>
       ) : (
         <div className="space-y-3">
-          {orgs.slice(0, 3).map((o:any) => (
-            <div key={o.id} className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors">
+          {clubs.slice(0, 3).map((c: any) => (
+            <div key={c.id} className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <div className="text-white font-medium">{o.organization_name || o.name}</div>
+                  <div className="text-white font-medium">{c.club_name || c.name}</div>
                   <div className="flex items-center space-x-3 mt-1">
-                    {o.category && <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">{o.category}</span>}
-                    {(o.status || o.membership_status) && (
+                    {c.category && <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">{c.category}</span>}
+                    {(c.status || c.membership_status) && (
                       <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
-                        {(o.status || o.membership_status) === 'approved' ? 'Member' : (o.status || o.membership_status)}
+                        {(c.status || c.membership_status) === 'approved' ? 'Member' : (c.status || c.membership_status)}
                       </span>
                     )}
                   </div>
-                  {o.joined_at && (
-                    <div className="text-xs text-gray-500 mt-2">Joined: {new Date(o.joined_at).toLocaleDateString()}</div>
+                  {c.joined_at && (
+                    <div className="text-xs text-gray-500 mt-2">Joined: {new Date(c.joined_at).toLocaleDateString()}</div>
                   )}
                 </div>
                 <div className="text-green-400">
@@ -110,13 +103,13 @@ function StudentOrganizationsCard() {
               </div>
             </div>
           ))}
-          {orgs.length > 3 && (
+          {clubs.length > 3 && (
             <div className="text-center pt-2">
               <a 
                 href="/dashboard/student/organizations" 
                 className="text-sm text-blue-400 hover:text-blue-300"
               >
-                View all {orgs.length} organizations
+                View all {clubs.length} clubs
               </a>
             </div>
           )}
@@ -126,8 +119,8 @@ function StudentOrganizationsCard() {
   );
 }
 
-function AllOrganizationsCard() {
-  const [orgs, setOrgs] = useState<any[]>([]);
+function AllClubsCard() {
+  const [clubs, setClubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -136,12 +129,12 @@ function AllOrganizationsCard() {
         setLoading(true);
         const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
-        const resp = await fetch(`${API}/organizations/detailed`, { headers: { Authorization: `Bearer ${token}` }});
-        if (!resp.ok) throw new Error('Failed to load organizations');
+        const resp = await fetch(`${API}/clubs/detailed`, { headers: { Authorization: `Bearer ${token}` }});
+        if (!resp.ok) throw new Error('Failed to load clubs');
         const data = await resp.json();
-        setOrgs(Array.isArray(data) ? data : []);
+        setClubs(Array.isArray(data) ? data : []);
       } catch (e: any) {
-        setError(e?.message || 'Failed to load organizations');
+        setError(e?.message || 'Failed to load clubs');
       } finally { setLoading(false); }
     };
     run();
@@ -150,48 +143,48 @@ function AllOrganizationsCard() {
     <div className="bg-black/40 border border-white/10 rounded-xl p-6">
       <h2 className="text-xl font-semibold text-white flex items-center mb-6">
         <Users className="w-5 h-5 mr-2 text-purple-400" />
-        All Organizations
+        All Clubs
       </h2>
       {error && <div className="bg-red-500/10 border border-red-500/40 text-red-300 px-4 py-2 rounded mb-4">{error}</div>}
       {loading ? (
         <div className="text-gray-300">Loading...</div>
-      ) : orgs.length === 0 ? (
-        <div className="text-gray-400">No organizations found.</div>
+      ) : clubs.length === 0 ? (
+        <div className="text-gray-400">No clubs found.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {orgs.map((o:any) => (
-            <div key={o.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
+          {clubs.map((c: any) => (
+            <div key={c.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-white font-medium">{o.organization_name}</div>
-                {o.member_count != null && (
-                  <span className="text-xs text-gray-400">{o.member_count} members</span>
+                <div className="text-white font-medium">{c.club_name || c.name}</div>
+                {c.member_count != null && (
+                  <span className="text-xs text-gray-400">{c.member_count} members</span>
                 )}
               </div>
-              {o.head && (
-                <div className="text-xs text-gray-300">Head: {o.head.name || '-'}{o.head.email ? ` • ${o.head.email}` : ''}</div>
+              {c.head && (
+                <div className="text-xs text-gray-300">Head: {c.head.name || '-'}{c.head.email ? ` • ${c.head.email}` : ''}</div>
               )}
-              {o.departments && o.departments.length > 0 && (
+              {c.departments && c.departments.length > 0 && (
                 <div className="mt-2">
                   <div className="text-xs text-gray-400 mb-1">Departments:</div>
                   <div className="flex flex-wrap gap-1">
-                    {o.departments.map((d:string, idx:number)=> (
+                    {c.departments.map((d:string, idx:number)=> (
                       <span key={idx} className="text-xs px-2 py-1 bg-blue-500/20 text-blue-300 rounded-full">{d}</span>
                     ))}
                   </div>
                 </div>
               )}
-              {o.activities && o.activities.length > 0 && (
+              {c.activities && c.activities.length > 0 && (
                 <div className="mt-3">
                   <div className="text-xs text-gray-400 mb-1">Recent Activities:</div>
                   <ul className="text-xs text-gray-300 list-disc list-inside space-y-1">
-                    {o.activities.slice(0,3).map((a:any, i:number)=> (
+                    {c.activities.slice(0,3).map((a:any, i:number)=> (
                       <li key={i}>{a.title} {a.date ? `• ${a.date}` : ''}{a.start_time ? ` ${a.start_time}` : ''}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              {o.description && (
-                <p className="text-xs text-gray-400 mt-3">{o.description}</p>
+              {c.description && (
+                <p className="text-xs text-gray-400 mt-3">{c.description}</p>
               )}
             </div>
           ))}
@@ -391,11 +384,11 @@ export default function StudentDashboard() {
                 </div>
               </div>
 
-              {/* My Organizations */}
-              <StudentOrganizationsCard />
+              {/* My Clubs */}
+              <StudentClubsCard />
 
-              {/* All Organizations */}
-              <AllOrganizationsCard />
+              {/* All Clubs */}
+              <AllClubsCard />
 
               {/* Quick Actions */}
               <div className="bg-black/40 border border-white/10 rounded-xl p-6">

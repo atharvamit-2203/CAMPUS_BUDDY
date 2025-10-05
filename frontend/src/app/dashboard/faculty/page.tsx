@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import CampusMiniMap from '@/components/CampusMiniMap';
@@ -85,13 +86,30 @@ interface WeeklyTimetable {
 }
 
 const FacultyDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading, setIntendedRoute } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated || !user) {
+      setIntendedRoute('/dashboard/faculty');
+      router.replace('/login');
+      return;
+    }
+
+    if (user.role !== 'faculty') {
+      setIntendedRoute('/dashboard/faculty');
+      router.replace(`/dashboard/${user.role}`);
+    }
+  }, [isAuthenticated, isLoading, router, setIntendedRoute, user]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [research, setResearch] = useState<Research[]>([]);
   const [weeklyTimetable, setWeeklyTimetable] = useState<WeeklyTimetable>({});
+  const [upcoming, setUpcoming] = useState<any[]>([]);
   const [editingTimetable, setEditingTimetable] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ day: string; time: string } | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -148,6 +166,29 @@ const FacultyDashboard = () => {
           setAssignments([]);
           setResearch([]);
           setWeeklyTimetable({});
+
+          const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+          const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : '';
+          const headers: any = token ? { Authorization: `Bearer ${token}` } : {};
+
+          // Load faculty students list (backend provides /faculty/students)
+          try {
+            const resp = await fetch(`${API}/faculty/students`, { headers });
+            if (resp.ok) {
+              const data = await resp.json();
+              setStudents(Array.isArray(data) ? data : (Array.isArray(data?.students) ? data.students : []));
+            }
+          } catch {}
+
+          // Load upcoming timetable entries for current user
+          try {
+            const resp = await fetch(`${API}/timetable/upcoming?window=720`, { headers });
+            if (resp.ok) {
+              const data = await resp.json();
+              const up = Array.isArray(data?.upcoming) ? data.upcoming : (Array.isArray(data) ? data : []);
+              setUpcoming(up);
+            }
+          } catch {}
         } catch (error) {
           console.error('Error fetching faculty data:', error);
         }
@@ -359,12 +400,34 @@ const FacultyDashboard = () => {
         </div>
         
         {/* Upcoming Classes List */}
-        <div className="overflow-x-auto">
-          <div className="bg-white/5 rounded-lg border border-white/10 p-4">
-            <div className="text-gray-400 text-center py-4">
-              Visit the <a href="/dashboard/faculty/timetable" className="text-blue-400 hover:underline">Timetable</a> section to view and manage your complete schedule.
+        <div className="space-y-3">
+          {(upcoming || []).slice(0, 6).map((it: any, idx: number) => {
+            const subject = it.subject || it.course || 'Class';
+            const room = it.room || it.room_name || it.location || '-';
+            const timeLabel = it.time || (it.start_time && it.end_time ? `${it.start_time} - ${it.end_time}` : it.start_time || '-');
+            const type = it.type || it.classType || it.kind || 'Lecture';
+            return (
+              <div key={it.id || it.key || idx} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-white font-medium">{subject}</h4>
+                    <p className="text-sm text-gray-400">{room}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-blue-400">{timeLabel}</p>
+                    <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-300 rounded-full">
+                      {type}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {(!upcoming || upcoming.length === 0) && (
+            <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-gray-400 text-center">
+              No upcoming classes found.
             </div>
-          </div>
+          )}
         </div>
       </div>
 

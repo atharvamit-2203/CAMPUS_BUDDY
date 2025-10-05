@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { 
-  ShoppingCart, 
-  Plus, 
-  Minus, 
-  Search, 
+import { facultyAPI } from '../../../services/roleBasedAPI';
+import Loading from '../../../components/Loading';
+import ErrorMessage from '../../../components/ErrorMessage';
+import {
+  ShoppingCart,
+  Plus,
+  Minus,
+  Search,
   Filter,
   Clock,
   Star,
@@ -62,183 +65,48 @@ const CanteenPage = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Sample menu data
-  const [menuItems] = useState<MenuItem[]>([
-    // Breakfast
-    {
-      id: '1',
-      name: 'Masala Dosa',
-      description: 'Crispy rice and lentil crepe with spiced potato filling, served with coconut chutney and sambar',
-      price: 60,
-      category: 'breakfast',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.5,
-      prepTime: '15 mins',
-      availability: true,
-      spiceLevel: 'medium',
-      tags: ['south indian', 'popular', 'crispy']
-    },
-    {
-      id: '2',
-      name: 'Aloo Paratha',
-      description: 'Stuffed wheat bread with spiced potatoes, served with yogurt and pickle',
-      price: 45,
-      category: 'breakfast',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.3,
-      prepTime: '20 mins',
-      availability: true,
-      spiceLevel: 'mild',
-      tags: ['north indian', 'filling', 'homestyle']
-    },
-    {
-      id: '3',
-      name: 'Poha',
-      description: 'Flattened rice with onions, peas, and aromatic spices, garnished with coriander',
-      price: 35,
-      category: 'breakfast',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.1,
-      prepTime: '10 mins',
-      availability: true,
-      spiceLevel: 'mild',
-      tags: ['light', 'quick', 'healthy']
-    },
-    
-    // Lunch
-    {
-      id: '4',
-      name: 'Chicken Biryani',
-      description: 'Fragrant basmati rice with tender chicken pieces, aromatic spices, and fried onions',
-      price: 120,
-      category: 'lunch',
-      image: '/api/placeholder/300/200',
-      isVeg: false,
-      rating: 4.7,
-      prepTime: '25 mins',
-      availability: true,
-      spiceLevel: 'medium',
-      tags: ['non-veg', 'popular', 'aromatic']
-    },
-    {
-      id: '5',
-      name: 'Dal Tadka',
-      description: 'Yellow lentils tempered with cumin, mustard seeds, and aromatic spices',
-      price: 55,
-      category: 'lunch',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.2,
-      prepTime: '15 mins',
-      availability: true,
-      spiceLevel: 'mild',
-      tags: ['healthy', 'protein', 'comfort']
-    },
-    {
-      id: '6',
-      name: 'Paneer Butter Masala',
-      description: 'Soft paneer cubes in rich tomato and cashew gravy with Indian spices',
-      price: 95,
-      category: 'lunch',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.6,
-      prepTime: '20 mins',
-      availability: true,
-      spiceLevel: 'medium',
-      tags: ['rich', 'creamy', 'popular']
-    },
-    
-    // Snacks
-    {
-      id: '7',
-      name: 'Samosa',
-      description: 'Crispy triangular pastry filled with spiced potatoes and peas, served with mint chutney',
-      price: 20,
-      category: 'snacks',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.4,
-      prepTime: '5 mins',
-      availability: true,
-      spiceLevel: 'medium',
-      tags: ['crispy', 'quick', 'street food']
-    },
-    {
-      id: '8',
-      name: 'Pav Bhaji',
-      description: 'Spiced mixed vegetable mash served with buttered bread rolls',
-      price: 65,
-      category: 'snacks',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.5,
-      prepTime: '12 mins',
-      availability: true,
-      spiceLevel: 'medium',
-      tags: ['mumbai street food', 'buttery', 'popular']
-    },
-    
-    // Beverages
-    {
-      id: '9',
-      name: 'Masala Chai',
-      description: 'Traditional Indian spiced tea with milk, cardamom, ginger, and other aromatic spices',
-      price: 15,
-      category: 'beverages',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.3,
-      prepTime: '5 mins',
-      availability: true,
-      tags: ['hot', 'spiced', 'energizing']
-    },
-    {
-      id: '10',
-      name: 'Fresh Lime Water',
-      description: 'Refreshing lime juice with water, salt or sugar, and mint leaves',
-      price: 25,
-      category: 'beverages',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.0,
-      prepTime: '3 mins',
-      availability: true,
-      tags: ['refreshing', 'healthy', 'cooling']
-    },
-    
-    // Desserts
-    {
-      id: '11',
-      name: 'Gulab Jamun',
-      description: 'Soft milk dumplings soaked in sugar syrup with cardamom and rose water',
-      price: 30,
-      category: 'desserts',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.4,
-      prepTime: '2 mins',
-      availability: true,
-      tags: ['sweet', 'traditional', 'soft']
-    },
-    {
-      id: '12',
-      name: 'Kulfi',
-      description: 'Traditional Indian ice cream with cardamom, pistachio, and saffron flavors',
-      price: 35,
-      category: 'desserts',
-      image: '/api/placeholder/300/200',
-      isVeg: true,
-      rating: 4.2,
-      prepTime: '1 min',
-      availability: true,
-      tags: ['cold', 'creamy', 'traditional']
-    }
-  ]);
+  // Fetch menu data from API
+  useEffect(() => {
+    const fetchMenuData = async () => {
+      try {
+        setLoading(true);
+        const data = await facultyAPI.getCanteenMenu();
+
+        // Transform API data to match component interface
+        const transformedItems: MenuItem[] = [];
+        Object.entries(data).forEach(([category, items]: [string, any[]]) => {
+          items.forEach((item: any) => {
+            transformedItems.push({
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              price: item.price,
+              category: category.toLowerCase() as MenuItem['category'],
+              image: item.image || '/api/placeholder/300/200',
+              isVeg: item.category?.toLowerCase().includes('veg') || !item.category?.toLowerCase().includes('chicken') && !item.category?.toLowerCase().includes('fish'),
+              rating: 4.0, // Default rating since API doesn't provide
+              prepTime: '15 mins', // Default prep time
+              availability: true, // Default availability
+              tags: [category.toLowerCase()]
+            });
+          });
+        });
+
+        setMenuItems(transformedItems);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load menu');
+        console.error('Error fetching menu:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMenuData();
+  }, []);
 
   const categories = [
     { id: 'all', name: 'All Items', icon: Utensils },
@@ -447,121 +315,144 @@ const CanteenPage = () => {
   );
 
   // Menu item card
-  const MenuItemCard = ({ item }: { item: MenuItem }) => (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden border">
-      <div className="relative">
-        <Image
-          src={item.image}
-          alt={item.name}
-          width={300}
-          height={200}
-          className="w-full h-48 object-cover"
-        />
-        <div className="absolute top-2 left-2 flex space-x-2">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-            item.isVeg ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-          }`}>
-            {item.isVeg ? '🟢 Veg' : '🔴 Non-Veg'}
-          </span>
-          {item.spiceLevel && (
-            <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gray-100 ${getSpiceLevelColor(item.spiceLevel)}`}>
-              🌶️ {item.spiceLevel}
+  const MenuItemCard = ({ item }: { item: MenuItem }) => {
+    return (
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden border">
+        <div className="relative">
+          <Image
+            src={item.image}
+            alt={item.name}
+            width={300}
+            height={200}
+            className="w-full h-48 object-cover"
+          />
+          <div className="absolute top-2 left-2 flex space-x-2">
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              item.isVeg ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {item.isVeg ? '🟢 Veg' : '🔴 Non-Veg'}
             </span>
-          )}
-        </div>
-        <button className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md hover:bg-gray-50">
-          <Heart size={16} className="text-gray-400" />
-        </button>
-      </div>
-      
-      <div className="p-4">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="font-semibold text-gray-900 text-lg">{item.name}</h3>
-          <span className="text-lg font-bold text-orange-600">₹{item.price}</span>
-        </div>
-        
-        <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
-        
-        <div className="flex items-center justify-between mb-3 text-sm text-gray-500">
-          <div className="flex items-center space-x-1">
-            <Star size={14} className="text-yellow-400 fill-current" />
-            <span>{item.rating}</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <Clock size={14} />
-            <span>{item.prepTime}</span>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap gap-1 mb-3">
-          {item.tags.slice(0, 3).map(tag => (
-            <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
-              #{tag}
-            </span>
-          ))}
-        </div>
-        
-        {item.availability ? (
-          <div className="flex items-center justify-between">
-            {getCartItemCount(item.id) > 0 ? (
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  className="bg-orange-100 text-orange-600 p-2 rounded-lg hover:bg-orange-200"
-                >
-                  <Minus size={16} />
-                </button>
-                <span className="font-semibold text-lg">{getCartItemCount(item.id)}</span>
-                <button
-                  onClick={() => addToCart(item)}
-                  className="bg-orange-100 text-orange-600 p-2 rounded-lg hover:bg-orange-200"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => addToCart(item)}
-                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 flex items-center space-x-2"
-              >
-                <Plus size={16} />
-                <span>Add to Cart</span>
-              </button>
+            {item.spiceLevel && (
+              <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gray-100 ${getSpiceLevelColor(item.spiceLevel)}`}>
+                🌶️ {item.spiceLevel}
+              </span>
             )}
           </div>
-        ) : (
-          <button
-            disabled
-            className="w-full bg-gray-300 text-gray-500 py-2 rounded-lg cursor-not-allowed"
-          >
-            Out of Stock
+          <button className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md hover:bg-gray-50">
+            <Heart size={16} className="text-gray-400" />
           </button>
-        )}
+        </div>
+
+        <div className="p-4">
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="font-semibold text-gray-900 text-lg">{item.name}</h3>
+            <span className="text-lg font-bold text-orange-600">₹{item.price}</span>
+          </div>
+
+          <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
+
+          <div className="flex items-center justify-between mb-3 text-sm text-gray-500">
+            <div className="flex items-center space-x-1">
+              <Star size={14} className="text-yellow-400 fill-current" />
+              <span>{item.rating}</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <Clock size={14} />
+              <span>{item.prepTime}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1 mb-3">
+            {item.tags.slice(0, 3).map(tag => (
+              <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                #{tag}
+              </span>
+            ))}
+          </div>
+
+          {item.availability ? (
+            <div className="flex items-center justify-between">
+              {getCartItemCount(item.id) > 0 ? (
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => removeFromCart(item.id)}
+                    className="bg-orange-100 text-orange-600 p-2 rounded-lg hover:bg-orange-200"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <span className="font-semibold text-lg">{getCartItemCount(item.id)}</span>
+                  <button
+                    onClick={() => addToCart(item)}
+                    className="bg-orange-100 text-orange-600 p-2 rounded-lg hover:bg-orange-200"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => addToCart(item)}
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 flex items-center space-x-2"
+                >
+                  <Plus size={16} />
+                  <span>Add to Cart</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              disabled
+              className="w-full bg-gray-300 text-gray-500 py-2 rounded-lg cursor-not-allowed"
+            >
+              Out of Stock
+            </button>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Menu view
-  const MenuView = () => (
-    <div className="space-y-6">
-      <CategoryFilter />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredMenuItems.map(item => (
-            <MenuItemCard key={item.id} item={item} />
-          ))}
+  const MenuView = () => {
+    if (loading) {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <Loading size="lg" text="Loading menu..." />
         </div>
-        
-        {filteredMenuItems.length === 0 && (
-          <div className="text-center py-12">
-            <Utensils className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No items found</h3>
-            <p className="mt-1 text-sm text-gray-500">Try adjusting your search or filter criteria.</p>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <ErrorMessage
+            message={error}
+            onRetry={() => window.location.reload()}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <CategoryFilter />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredMenuItems.map(item => (
+              <MenuItemCard key={item.id} item={item} />
+            ))}
           </div>
-        )}
+
+          {filteredMenuItems.length === 0 && (
+            <div className="text-center py-12">
+              <Utensils className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No items found</h3>
+              <p className="mt-1 text-sm text-gray-500">Try adjusting your search or filter criteria.</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Cart view
   const CartView = () => (
@@ -726,8 +617,8 @@ const CanteenPage = () => {
   );
 
   // Checkout modal
-  const CheckoutModal = () => (
-    showCheckout && (
+  const CheckoutModal = () => {
+    return showCheckout ? (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
           <div className="flex justify-between items-center mb-4">
@@ -740,11 +631,11 @@ const CanteenPage = () => {
               <X size={20} />
             </button>
           </div>
-          
+
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Location</label>
-              <select 
+              <select
                 className="w-full p-2 border border-gray-300 rounded-lg"
                 title="Select delivery location"
               >
@@ -756,7 +647,7 @@ const CanteenPage = () => {
                 <option>Sports Complex</option>
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
               <div className="space-y-2">
@@ -774,7 +665,7 @@ const CanteenPage = () => {
                     </div>
                   </div>
                 </button>
-                
+
                 <button
                   onClick={() => placeOrder('Cash on Delivery')}
                   className="w-full p-3 border border-gray-300 rounded-lg hover:bg-gray-50 text-left"
@@ -791,7 +682,7 @@ const CanteenPage = () => {
                 </button>
               </div>
             </div>
-            
+
             <div className="border-t pt-4">
               <div className="flex justify-between font-bold text-lg">
                 <span>Total Amount</span>
@@ -801,8 +692,8 @@ const CanteenPage = () => {
           </div>
         </div>
       </div>
-    )
-  );
+    ) : null;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">

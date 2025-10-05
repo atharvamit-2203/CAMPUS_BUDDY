@@ -30,10 +30,10 @@ class RoomBookingRequest(BaseModel):
 # ======================
 
 def _ensure_notifications_tables(cursor):
-    # notifications
+    # club_notifications
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS notifications (
+        CREATE TABLE IF NOT EXISTS club_notifications (
           id INT AUTO_INCREMENT PRIMARY KEY,
           club_id INT NULL,
           title VARCHAR(200) NOT NULL,
@@ -42,23 +42,23 @@ def _ensure_notifications_tables(cursor):
           priority ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium',
           created_by INT NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_notifications_club_id (club_id),
-          INDEX idx_notifications_created_by (created_by)
+          INDEX idx_club_notifications_club_id (club_id),
+          INDEX idx_club_notifications_created_by (created_by)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """
     )
-    # recipients
+    # club_notification_recipients
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS notification_recipients (
+        CREATE TABLE IF NOT EXISTS club_notification_recipients (
           id INT AUTO_INCREMENT PRIMARY KEY,
           notification_id INT NOT NULL,
           user_id INT NOT NULL,
           is_read TINYINT(1) NOT NULL DEFAULT 0,
           read_at DATETIME NULL,
-          UNIQUE KEY uq_notification_user (notification_id, user_id),
-          INDEX idx_notification_id (notification_id),
-          INDEX idx_user_id (user_id)
+          UNIQUE KEY uq_club_notification_user (notification_id, user_id),
+          INDEX idx_club_notification_id (notification_id),
+          INDEX idx_club_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """
     )
@@ -167,7 +167,7 @@ async def create_club_notification(
         # Create notification
         cursor.execute(
             """
-            INSERT INTO notifications (club_id, title, message, category, priority, created_by, created_at)
+            INSERT INTO club_notifications (club_id, title, message, category, priority, created_by, created_at)
             VALUES (%s, %s, %s, 'club', %s, %s, NOW())
             """,
             (club_id, payload.title, payload.message, payload.priority or "medium", current_user["id"]) 
@@ -187,7 +187,7 @@ async def create_club_notification(
 
         if recipient_rows:
             cursor.executemany(
-                "INSERT IGNORE INTO notification_recipients (notification_id, user_id) VALUES (%s, %s)",
+                "INSERT IGNORE INTO club_notification_recipients (notification_id, user_id) VALUES (%s, %s)",
                 recipient_rows
             )
         connection.commit()
@@ -228,7 +228,7 @@ async def list_club_notifications(club_id: int, current_user = Depends(auth.get_
         cursor.execute(
             """
             SELECT n.*
-            FROM notifications n
+            FROM club_notifications n
             WHERE n.club_id = %s
             ORDER BY n.created_at DESC
             LIMIT 200
@@ -252,8 +252,8 @@ async def my_notifications(limit: int = 100, current_user = Depends(auth.get_cur
             SELECT nr.id as receipt_id, nr.is_read, nr.read_at,
                    n.id as notification_id, n.club_id, n.title, n.message,
                    n.category, n.priority, n.created_by, n.created_at
-            FROM notification_recipients nr
-            JOIN notifications n ON nr.notification_id = n.id
+            FROM club_notification_recipients nr
+            JOIN club_notifications n ON nr.notification_id = n.id
             WHERE nr.user_id = %s
             ORDER BY n.created_at DESC
             LIMIT %s
@@ -280,7 +280,7 @@ async def mark_notifications_read(payload: MarkReadPayload, current_user = Depen
         # Update only receipts that belong to the caller
         format_strings = ",".join(["%s"] * len(payload.notification_ids))
         query = (
-            f"UPDATE notification_recipients SET is_read = 1, read_at = NOW() "
+            f"UPDATE club_notification_recipients SET is_read = 1, read_at = NOW() "
             f"WHERE user_id = %s AND notification_id IN ({format_strings})"
         )
         cursor.execute(query, (current_user["id"], *payload.notification_ids))
@@ -435,13 +435,14 @@ async def book_room(
                     room_label = str(payload.room_id)
                 time_label = f"{payload.booking_date} {payload.start_time.strftime('%H:%M')} - {payload.end_time.strftime('%H:%M')}"
                 message = f"{room_label} booked: {payload.purpose} • {time_label}"
-                # Insert notification targeting all roles
+                # Insert notification to general campus notification system
+                # Note: Using existing notifications table structure (user_id, type, expires_at)
                 cursor.execute(
                     """
-                    INSERT INTO notifications (title, message, category, priority, target_role, expires_at, created_by, created_at)
-                    VALUES (%s, %s, 'room_booking', 'medium', 'all', %s, %s, NOW())
+                    INSERT INTO notifications (user_id, title, message, type, priority, expires_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (title, message, dt_end, current_user["id"])
+                    (current_user["id"], title, message, 'general', 'medium', dt_end)
                 )
                 # No per-user reads in this system; main /notifications uses user_notification_reads to track read state
                 connection.commit()

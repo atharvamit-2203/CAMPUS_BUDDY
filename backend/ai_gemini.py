@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from typing import Optional, List
+from typing import Optional, List, Dict
 import os, json, base64
 import requests
 import time
@@ -15,6 +15,116 @@ GEMINI_API_VERSION = os.getenv("GEMINI_API_VERSION", "v1alpha")
 router = APIRouter()
 
 import re
+
+def is_lunch_or_break(subject: str) -> bool:
+    """Check if the subject is a lunch break or recess"""
+    if not subject:
+        return False
+    subject_lower = subject.lower().strip()
+    break_keywords = ['lunch', 'break', 'recess', 'interval', 'free', 'gap', 'tiffin', 'meal']
+    return any(keyword in subject_lower for keyword in break_keywords)
+
+def is_lunch_time(start_time: str, end_time: str) -> bool:
+    """Check if the time slot is during typical lunch hours (12:00-14:30)"""
+    try:
+        start_parts = start_time.split(':')
+        end_parts = end_time.split(':')
+        start_hour = int(start_parts[0])
+        start_min = int(start_parts[1])
+        end_hour = int(end_parts[0])
+        end_min = int(end_parts[1])
+        
+        # Convert to minutes for easier comparison
+        start_minutes = start_hour * 60 + start_min
+        end_minutes = end_hour * 60 + end_min
+        
+        # Lunch time: 12:00 PM (720 min) to 2:30 PM (870 min)
+        lunch_start = 12 * 60  # 12:00 PM
+        lunch_end = 14 * 60 + 30  # 2:30 PM
+        
+        # Check if this time slot overlaps with lunch time
+        return (start_minutes >= lunch_start and start_minutes < lunch_end) or \
+               (end_minutes > lunch_start and end_minutes <= lunch_end) or \
+               (start_minutes <= lunch_start and end_minutes >= lunch_end)
+    except (ValueError, IndexError):
+        return False
+
+def normalize_time_24h(time_str: str) -> str:
+    """Ensure time is in proper 24-hour format and fix common AM/PM misinterpretations"""
+    if not time_str:
+        return time_str
+    
+    # Extract hour and minute
+    time_parts = time_str.split(':')
+    if len(time_parts) < 2:
+        return time_str
+        
+    try:
+        hour = int(time_parts[0])
+        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        
+        # Fix common OCR misinterpretation: 21:00 for 9 AM should be 09:00
+        if hour == 21 and minute == 0:  # 9 PM -> 9 AM
+            hour = 9
+        elif hour == 22 and minute == 0:  # 10 PM -> 10 AM  
+            hour = 10
+        elif hour == 23 and minute == 0:  # 11 PM -> 11 AM
+            hour = 11
+        elif hour > 18 and hour <= 23:  # Other evening times that might be morning
+            # If it's between 19-23, it might be morning time misinterpreted
+            potential_morning = hour - 12
+            if potential_morning >= 7 and potential_morning <= 11:  # 7-11 AM range
+                hour = potential_morning
+        
+        # Ensure hour is in valid range
+        hour = max(0, min(23, hour))
+        minute = max(0, min(59, minute))
+        
+        return f"{hour:02d}:{minute:02d}"
+    except ValueError:
+        return time_str
+
+def process_consecutive_lectures(rows: List[dict]) -> List[dict]:
+    """Process the timetable data to ensure consecutive lectures of the same subject are preserved"""
+    if not rows:
+        return rows
+    
+    # First, clean and normalize the data
+    processed_rows = []
+    
+    for row in rows:
+        # Clean up the row data
+        clean_row = {}
+        clean_row["day_of_week"] = (row.get("day_of_week", "") or row.get("day", "")).strip().capitalize()
+        clean_row["start_time"] = normalize_time_24h((row.get("start_time", "") or "").strip())
+        clean_row["end_time"] = normalize_time_24h((row.get("end_time", "") or "").strip())
+        clean_row["subject"] = (row.get("subject", "") or row.get("course", "")).strip()
+        clean_row["room"] = row.get("room") or row.get("venue")
+        clean_row["faculty"] = row.get("faculty") or row.get("teacher")
+        
+        # Skip empty or invalid entries
+        if not all([clean_row["day_of_week"], clean_row["start_time"], 
+                   clean_row["end_time"], clean_row["subject"]]):
+            continue
+            
+        # Skip lunch breaks and recess periods
+        if is_lunch_or_break(clean_row["subject"]):
+            continue
+            
+        # Skip if it's during lunch time and subject suggests it's a break
+        if is_lunch_time(clean_row["start_time"], clean_row["end_time"]) and len(clean_row["subject"].strip()) < 3:
+            continue
+            
+        processed_rows.append(clean_row)
+    
+    # Sort by day and time to ensure proper ordering
+    day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    processed_rows.sort(key=lambda x: (
+        day_order.index(x["day_of_week"]) if x["day_of_week"] in day_order else 7,
+        x["start_time"]
+    ))
+    
+    return processed_rows
 
 def _extract_json_from_text(text: str) -> str | None:
     if not text:
@@ -284,13 +394,20 @@ async def ai_club_recommendations(payload: dict = {}, current_user = Depends(aut
 
 @router.post("/timetable/upload")
 async def upload_timetable(file: UploadFile = File(...), current_user = Depends(auth.get_current_user)):
-    """Upload a timetable image/PDF and save parsed entries for the current student.
-    Clears previous custom entries for that user and inserts new ones."""
-    if current_user.get("role") != "student":
-        raise HTTPException(status_code=403, detail="Students only")
+    """Upload a timetable image/PDF and save parsed entries for the current student or faculty.
+    Clears previous custom entries for that user and inserts new ones.
+    Generates notifications for each lecture in the timetable."""
+    if current_user.get("role") not in ["student", "faculty"]:
+        raise HTTPException(status_code=403, detail="Only students and faculty can upload timetables")
     img = await file.read()
     instruction = (
-        "Extract timetable as JSON array. Each entry: {day_of_week (e.g., Monday), start_time (HH:MM), end_time (HH:MM), subject, room (optional), faculty (optional)}."
+        "Extract timetable as JSON array. Each entry: {day_of_week (e.g., Monday), start_time (HH:MM in 24-hour format), end_time (HH:MM in 24-hour format), subject, room (optional), faculty (optional)}."
+        " IMPORTANT INSTRUCTIONS:"
+        " 1. Convert ALL times to 24-hour format (09:00, not 21:00 for 9 AM)"
+        " 2. Morning times 8 AM-12 PM should be 08:00-12:00, afternoon 1 PM-6 PM should be 13:00-18:00"
+        " 3. Skip entries that are clearly lunch breaks, recess, or break times"
+        " 4. If the same subject appears in consecutive time slots, include it in BOTH slots"
+        " 5. Only include actual lecture/class subjects, not 'LUNCH', 'BREAK', 'RECESS'"
         " Ensure day_of_week is a valid weekday string. Return ONLY a JSON array (no commentary)."
     )
     try:
@@ -305,6 +422,9 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
             rows = json.loads(candidate)
         if not isinstance(rows, list):
             raise ValueError("OCR did not return a JSON array")
+            
+        # Process consecutive lectures and improve data quality
+        rows = process_consecutive_lectures(rows)
     except HTTPException:
         # bubble up Gemini error as-is
         raise
@@ -333,14 +453,43 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        
+        # Ensure notifications table exists
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notifications (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              user_id INT NOT NULL,
+              title VARCHAR(200) NOT NULL,
+              message TEXT NOT NULL,
+              type VARCHAR(50) NOT NULL DEFAULT 'lecture',
+              is_read BOOLEAN NOT NULL DEFAULT FALSE,
+              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              scheduled_for DATETIME NULL,
+              INDEX idx_user_id (user_id),
+              INDEX idx_scheduled_for (scheduled_for)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        
         # clear previous
         cur.execute("DELETE FROM user_timetable_entries WHERE user_id = %s", (current_user["id"],))
         inserted = 0
+        notifications_created = 0
+        
+
+        
         def as_time(s: str) -> str:
             s = (s or "").strip()
-            if len(s) == 5 and s.count(":") == 1:
-                return s + ":00"
-            return s
+            normalized = normalize_time_24h(s)
+            if len(normalized) == 5 and normalized.count(":") == 1:
+                return normalized + ":00"
+            return normalized
+            
+
+            
+
+            
         for r in rows:
             try:
                 dow = (r.get("day_of_week") or r.get("day") or "").strip().capitalize()
@@ -349,7 +498,17 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
                 subject = (r.get("subject") or r.get("course") or "").strip()
                 room = (r.get("room") or r.get("venue") or None)
                 faculty = (r.get("faculty") or r.get("teacher") or None)
+                
+                # Skip if essential fields are missing
                 if not (dow and st and et and subject):
+                    continue
+                    
+                # Skip lunch breaks and recess periods
+                if is_lunch_or_break(subject):
+                    continue
+                    
+                # Skip if it's during lunch time and subject suggests it's a break
+                if is_lunch_time(st, et) and (not subject or len(subject.strip()) < 3):
                     continue
                 cur.execute(
                     """
@@ -359,10 +518,63 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
                     (current_user["id"], dow, st, et, subject, room, faculty)
                 )
                 inserted += 1
-            except Exception:
+                
+                # Create notification for each lecture
+                # Calculate next occurrence of this day of week
+                cur.execute(
+                    """
+                    SELECT DATE_ADD(CURDATE(), 
+                        INTERVAL MOD(WEEKDAY(%s) - WEEKDAY(CURDATE()) + 7, 7) DAY
+                    ) as next_date
+                    """, 
+                    (dow,)
+                )
+                next_date_result = cur.fetchone()
+                next_date = next_date_result['next_date'] if next_date_result else None
+                
+                if next_date:
+                    # Format notification
+                    location_info = f"Room: {room}" if room else "Room: TBD"
+                    faculty_info = f"Faculty: {faculty}" if faculty else ""
+                    
+                    notification_title = f"Upcoming Lecture: {subject}"
+                    notification_message = f"""
+                    📚 {subject}
+                    🕒 {st} - {et}
+                    📅 {dow}
+                    🏫 {location_info}
+                    👨‍🏫 {faculty_info}
+                    """
+                    
+                    # Calculate scheduled_for time (30 minutes before lecture)
+                    cur.execute(
+                        """
+                        SELECT TIMESTAMP(
+                            %s, 
+                            SUBTIME(%s, '00:30:00')
+                        ) as notification_time
+                        """,
+                        (next_date, st)
+                    )
+                    notification_time_result = cur.fetchone()
+                    notification_time = notification_time_result['notification_time'] if notification_time_result else None
+                    
+                    if notification_time:
+                        cur.execute(
+                            """
+                            INSERT INTO notifications 
+                            (user_id, title, message, type, scheduled_for)
+                            VALUES (%s, %s, %s, 'lecture', %s)
+                            """,
+                            (current_user["id"], notification_title, notification_message, notification_time)
+                        )
+                        notifications_created += 1
+            except Exception as e:
+                print(f"Error processing entry: {e}")
                 continue
+                
         conn.commit()
-        return {"inserted": inserted}
+        return {"inserted": inserted, "notifications_created": notifications_created}
     except mysql.connector.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:

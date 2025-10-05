@@ -95,7 +95,20 @@ function rangesOverlap(a: string, b: string): boolean {
 function parseStartMinutes(timeRange: string): number {
   const n = normalizeRange24(timeRange);
   if (!n) return 0;
-  return n.startMin;
+  
+  // Fix common OCR misinterpretation where 9 AM gets parsed as 21:00 (9 PM)
+  let startMin = n.startMin;
+  const startHour = Math.floor(startMin / 60);
+  
+  // If the time is in evening (21:00-23:00) but likely meant to be morning
+  if (startHour >= 21 && startHour <= 23) {
+    const possibleMorning = startHour - 12; // 21->9, 22->10, 23->11
+    if (possibleMorning >= 7 && possibleMorning <= 11) {
+      startMin = possibleMorning * 60 + (startMin % 60);
+    }
+  }
+  
+  return startMin;
 }
 
 const StudentTimetable = () => {

@@ -412,6 +412,72 @@ class UserUpdateRequest(BaseModel):
     is_verified: Optional[bool] = None
     role: Optional[str] = None
 
+class ClubCreate(BaseModel):
+    name: str
+    description: str
+    category: str
+    college_id: int
+    max_members: Optional[int] = 100
+
+class ClubResponse(BaseModel):
+    id: int
+    name: str
+    description: str
+    category: str
+    college_id: int
+    max_members: int
+    member_count: Optional[int] = 0
+    created_by: int
+    is_active: bool
+    created_at: datetime
+
+class ClubApplicationCreate(BaseModel):
+    club_id: int
+    application_message: Optional[str] = ""
+
+class ClubApplicationResponse(BaseModel):
+    id: int
+    club_id: int
+    user_id: int
+    application_message: str
+    status: str  # pending, approved, rejected
+    applied_at: datetime
+    reviewed_at: Optional[datetime]
+    reviewed_by: Optional[int]
+
+class ClubApplicationAction(BaseModel):
+    application_id: int
+    action: str  # approve, reject
+    review_message: Optional[str] = ""
+
+class OrganizationApplicationCreate(BaseModel):
+    club_id: int
+    full_name: str
+    batch: str
+    year_of_study: str
+    sap_id: str
+    department_to_join: str
+    why_join: str
+    what_contribute: str
+    can_stay_longer_hours: bool
+
+class OrganizationApplicationResponse(BaseModel):
+    id: int
+    club_id: int
+    user_id: int
+    full_name: str
+    batch: str
+    year_of_study: str
+    sap_id: str
+    department_to_join: str
+    why_join: str
+    what_contribute: str
+    can_stay_longer_hours: bool
+    status: str  # pending, approved, rejected
+    applied_at: datetime
+    reviewed_at: Optional[datetime]
+    reviewed_by: Optional[int]
+
 class ReportRequest(BaseModel):
     report_type: str  # user_activity, club_stats, event_stats, canteen_sales
     start_date: Optional[date] = None

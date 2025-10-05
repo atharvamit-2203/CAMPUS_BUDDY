@@ -3,20 +3,19 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AIDashboard from "@/components/AIDashboard";
+import { facultyAPI } from "@/services/roleBasedAPI";
 
 // TypeScript interfaces for faculty dashboard data
 
 interface Student {
   id: number;
   full_name: string;
-  username: string;
   student_id: string;
   course: string;
   semester: string;
   cgpa: number;
-  email: string;
-  attendance_percentage?: number;
-  recent_submissions?: number;
+  attendance_percentage: number;
+  recent_submissions: number;
 }
 
 interface Research {
@@ -56,10 +55,10 @@ interface Course {
   code: string;
   semester: string;
   students_enrolled: number;
-  description: string;
+  description?: string;
   schedule: string;
   credits: number;
-  status: string;
+  status: 'active' | 'completed' | 'upcoming';
 }
 
 interface CommitteeEvent {
@@ -113,6 +112,7 @@ export default function FacultyDashboard() {
   const [research, setResearch] = useState<Research[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [timetableData, setTimetableData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
   // Committee management states
@@ -125,54 +125,8 @@ export default function FacultyDashboard() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCart, setShowCart] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
-
-  // Sample menu data for teachers
-  const menuData = {
-    breakfast: [
-      { id: 'b1', name: 'Aloo Paratha', price: 60, description: 'Stuffed potato flatbread with butter', image: '🥞' },
-      { id: 'b2', name: 'Poha', price: 40, description: 'Flattened rice with onions and spices', image: '🍚' },
-      { id: 'b3', name: 'Upma', price: 35, description: 'Semolina breakfast with vegetables', image: '🥣' },
-      { id: 'b4', name: 'Bread Omelette', price: 50, description: 'Fluffy omelette with bread slices', image: '🍳' },
-      { id: 'b5', name: 'Masala Dosa', price: 80, description: 'Crispy crepe with potato filling', image: '🥞' },
-      { id: 'b6', name: 'Idli Sambhar', price: 45, description: 'Steamed rice cakes with lentil curry', image: '🍘' }
-    ],
-    lunch: [
-      { id: 'l1', name: 'Veg Thali', price: 120, description: 'Complete meal with rice, dal, vegetables, roti', image: '🍛' },
-      { id: 'l2', name: 'Chicken Biryani', price: 180, description: 'Aromatic basmati rice with chicken', image: '🍚' },
-      { id: 'l3', name: 'Paneer Butter Masala', price: 140, description: 'Creamy cottage cheese curry with naan', image: '🍛' },
-      { id: 'l4', name: 'Rajma Rice', price: 100, description: 'Kidney bean curry with steamed rice', image: '🍚' },
-      { id: 'l5', name: 'Fish Curry', price: 160, description: 'South Indian fish curry with rice', image: '🐟' },
-      { id: 'l6', name: 'Chole Bhature', price: 110, description: 'Spicy chickpeas with fried bread', image: '🍞' }
-    ],
-    snacks: [
-      { id: 's1', name: 'Samosa', price: 25, description: 'Crispy fried pastry with potato filling', image: '🥟' },
-      { id: 's2', name: 'Pakoras', price: 40, description: 'Mixed vegetable fritters', image: '🥢' },
-      { id: 's3', name: 'Sandwich', price: 80, description: 'Grilled vegetable sandwich', image: '🥪' },
-      { id: 's4', name: 'Pav Bhaji', price: 90, description: 'Spiced vegetable curry with bread rolls', image: '🍞' },
-      { id: 's5', name: 'Chaat', price: 50, description: 'Tangy street food snack', image: '🥗' },
-      { id: 's6', name: 'Spring Roll', price: 60, description: 'Crispy vegetable spring rolls', image: '🌯' }
-    ],
-    beverages: [
-      { id: 'bv1', name: 'Masala Chai', price: 20, description: 'Spiced Indian tea', image: '☕' },
-      { id: 'bv2', name: 'Coffee', price: 30, description: 'Hot coffee with milk', image: '☕' },
-      { id: 'bv3', name: 'Fresh Lime Water', price: 25, description: 'Refreshing lime juice', image: '🍋' },
-      { id: 'bv4', name: 'Lassi', price: 40, description: 'Yogurt-based drink', image: '🥛' },
-      { id: 'bv5', name: 'Cold Coffee', price: 50, description: 'Iced coffee with ice cream', image: '🧊' },
-      { id: 'bv6', name: 'Fresh Juice', price: 60, description: 'Seasonal fruit juice', image: '🧃' }
-    ],
-    desserts: [
-      { id: 'd1', name: 'Gulab Jamun', price: 40, description: 'Sweet milk dumplings in syrup', image: '🍰' },
-      { id: 'd2', name: 'Ice Cream', price: 50, description: 'Vanilla/Chocolate ice cream', image: '🍦' },
-      { id: 'd3', name: 'Kheer', price: 45, description: 'Rice pudding with nuts', image: '🍮' },
-      { id: 'd4', name: 'Jalebi', price: 35, description: 'Crispy spirals in sugar syrup', image: '🍯' }
-    ],
-    healthy: [
-      { id: 'h1', name: 'Fruit Salad', price: 70, description: 'Fresh seasonal fruits', image: '🥗' },
-      { id: 'h2', name: 'Green Salad', price: 60, description: 'Mixed vegetables with dressing', image: '🥗' },
-      { id: 'h3', name: 'Sprouts Chaat', price: 50, description: 'Protein-rich sprouts salad', image: '🌱' },
-      { id: 'h4', name: 'Grilled Chicken', price: 150, description: 'Healthy grilled chicken breast', image: '🍗' }
-    ]
-  };
+  const [menuData, setMenuData] = useState<{[key: string]: Array<{id: string, name: string, price: number, description: string, image: string, category: string}>}>({});
+  const [menuLoading, setMenuLoading] = useState(false);
   
   // Chatbot states
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -191,222 +145,35 @@ export default function FacultyDashboard() {
     const fetchFacultyData = async () => {
       try {
         setLoading(true);
-        // Since API doesn't exist yet, use mock data
-        // const [studentsData, researchData, eventsData] = await Promise.all([
-        //   api.get('/faculty/students'),
-        //   api.get('/faculty/research'),
-        //   api.get('/faculty/events')
-        // ]);
-        
-        // setStudents(studentsData.data);
-        // setResearch(researchData.data);
-        // setEvents(eventsData.data);
 
-        // Fetch committee data if user is committee head
-        const isCommitteeHead = user?.email?.includes('head') || false; // Mock check
-        if (isCommitteeHead) {
-          try {
-            // const committeeData = await api.get('/faculty/committee');
-            // setCommitteeEvents(committeeData.data.events || []);
-            // setCommitteeMembers(committeeData.data.members || []);
-            // setCommitteeActivities(committeeData.data.activities || []);
-            
-            // Mock committee data
-            setCommitteeEvents([
-              {
-                id: "1",
-                title: "Monthly Committee Meeting",
-                description: "Regular monthly meeting to discuss upcoming activities",
-                date: "2025-09-15",
-                time: "10:00 AM",
-                location: "Conference Room A",
-                type: "meeting",
-                status: "planned",
-                attendees: 8,
-                budget: "₹5,000"
-              },
-              {
-                id: "2",
-                title: "Tech Workshop: AI in Education",
-                description: "Workshop on implementing AI tools in educational processes",
-                date: "2025-09-20",
-                time: "2:00 PM",
-                location: "Auditorium",
-                type: "workshop",
-                status: "planned",
-                attendees: 50,
-                budget: "₹25,000"
-              }
-            ]);
-
-            setCommitteeMembers([
-              {
-                id: 1,
-                name: "Dr. Sarah Johnson",
-                role: "Vice Head",
-                department: "Computer Science",
-                email: "sarah.johnson@college.edu",
-                phone: "+91 9876543210",
-                status: "active"
-              },
-              {
-                id: 2,
-                name: "Prof. Rajesh Kumar",
-                role: "Secretary",
-                department: "Information Technology",
-                email: "rajesh.kumar@college.edu",
-                status: "active"
-              }
-            ]);
-
-            setCommitteeActivities([
-              {
-                id: "1",
-                title: "Budget Approval for Annual Tech Fest",
-                description: "Approved budget allocation for the annual technology festival",
-                type: "decision",
-                date: "2025-09-01",
-                participants: ["Dr. Sarah Johnson", "Prof. Rajesh Kumar", "Dr. Mike Chen"],
-                outcome: "Approved ₹2,50,000 budget"
-              }
-            ]);
-          } catch (committeeError) {
-            console.error('Error fetching committee data:', committeeError);
-          }
-        }
-
-        // Mock assignments data
-        setAssignments([
-          { 
-            id: "1", 
-            title: "Machine Learning Project", 
-            course: "CS 401 - AI & ML", 
-            due_date: "2025-09-15",
-            submissions: 28,
-            total_students: 35,
-            status: "Active"
-          },
-          { 
-            id: "2", 
-            title: "Database Design Assignment", 
-            course: "CS 301 - DBMS", 
-            due_date: "2025-09-12",
-            submissions: 42,
-            total_students: 45,
-            status: "Active"
-          },
-          { 
-            id: "3", 
-            title: "Algorithm Analysis", 
-            course: "CS 302 - DSA", 
-            due_date: "2025-09-08",
-            submissions: 30,
-            total_students: 30,
-            status: "Completed"
-          }
+        // Fetch data from APIs
+        const [coursesData, studentsData, researchData, assignmentsData, menuDataResponse, eventsData, timetableResponse] = await Promise.all([
+          facultyAPI.getCourses().catch(() => []),
+          facultyAPI.getStudentAnalytics().catch(() => []),
+          facultyAPI.getResearchProjects().catch(() => []),
+          facultyAPI.getAssignments().catch(() => []),
+          facultyAPI.getCanteenMenu().catch(() => ({})),
+          facultyAPI.getEvents().catch(() => []),
+          facultyAPI.getTimetable().catch(() => null)
         ]);
 
-        // Mock events data
-        setEvents([
-          {
-            id: 1,
-            title: "Faculty Development Workshop",
-            description: "Workshop on modern teaching methodologies",
-            start_time: "2025-09-15T10:00:00",
-            end_time: "2025-09-15T16:00:00", 
-            location: "Conference Hall",
-            type: "workshop",
-            attendees_count: 25,
-            is_organizer: false
-          },
-          {
-            id: 2,
-            title: "Research Symposium", 
-            description: "Annual research presentation event",
-            start_time: "2025-09-20T09:00:00",
-            end_time: "2025-09-20T17:00:00",
-            location: "Main Auditorium",
-            type: "symposium", 
-            attendees_count: 150,
-            is_organizer: true
-          }
-        ]);
+        setCourses(coursesData);
+        setStudents(studentsData);
+        setResearch(researchData);
+        setAssignments(assignmentsData);
+        setMenuData(menuDataResponse);
+        setEvents(eventsData as any); // Type assertion for now
+        setTimetableData(timetableResponse);
+
+
       } catch (error) {
         console.error('Error fetching faculty data:', error);
-        // Mock data as fallback
-        setCourses([
-          { id: 1, name: "Artificial Intelligence & Machine Learning", code: "CS 401", semester: "7th", students_enrolled: 35, description: "Advanced concepts in AI and ML", schedule: "Mon, Wed, Fri - 10:00 AM", credits: 4, status: "Active" },
-          { id: 2, name: "Database Management Systems", code: "CS 301", semester: "5th", students_enrolled: 45, description: "Relational and NoSQL databases", schedule: "Tue, Thu - 2:00 PM", credits: 3, status: "Active" },
-          { id: 3, name: "Data Structures and Algorithms", code: "CS 302", semester: "5th", students_enrolled: 42, description: "Advanced data structures and algorithms", schedule: "Mon, Wed, Fri - 11:00 AM", credits: 4, status: "Active" }
-        ]);
-
-        setStudents([
-          { id: 1, full_name: "Rahul Sharma", username: "rahul_s", student_id: "2021CS001", course: "Computer Science", semester: "7th", cgpa: 8.5, email: "rahul@example.com", attendance_percentage: 92, recent_submissions: 3 },
-          { id: 2, full_name: "Priya Patel", username: "priya_p", student_id: "2021CS002", course: "Computer Science", semester: "7th", cgpa: 9.1, email: "priya@example.com", attendance_percentage: 95, recent_submissions: 4 },
-          { id: 3, full_name: "Arjun Kumar", username: "arjun_k", student_id: "2021CS003", course: "Computer Science", semester: "5th", cgpa: 7.8, email: "arjun@example.com", attendance_percentage: 88, recent_submissions: 2 }
-        ]);
-
-        setResearch([
-          { 
-            id: "1", 
-            title: "AI-Powered Educational Assessment", 
-            description: "Developing intelligent systems for automated grading and feedback", 
-            status: "Active",
-            collaborators: 4,
-            publications: 2,
-            budget: "₹5,00,000",
-            duration: "24 months",
-            domain: ["Artificial Intelligence", "Education Technology", "Natural Language Processing"]
-          },
-          { 
-            id: "2", 
-            title: "Blockchain in Academic Credentials", 
-            description: "Secure and verifiable academic credential management system", 
-            status: "Planning",
-            collaborators: 3,
-            publications: 0,
-            budget: "₹3,50,000",
-            duration: "18 months",
-            domain: ["Blockchain", "Security", "Academic Systems"]
-          }
-        ]);
-
-        // Mock events data
-        setEvents([
-          {
-            id: 1,
-            title: "Database Systems Mid-Term Exam",
-            description: "Mid-semester examination for Database Systems course",
-            start_time: "2024-03-15T10:00:00",
-            end_time: "2024-03-15T12:00:00",
-            location: "Room A-101",
-            type: "exam",
-            attendees_count: 45,
-            is_organizer: true
-          },
-          {
-            id: 2,
-            title: "Machine Learning Workshop",
-            description: "Hands-on workshop on ML algorithms and implementation",
-            start_time: "2024-03-20T14:00:00",
-            end_time: "2024-03-20T17:00:00",
-            location: "Computer Lab B-205",
-            type: "workshop",
-            attendees_count: 30,
-            is_organizer: true
-          },
-          {
-            id: 3,
-            title: "Research Paper Review Meeting",
-            description: "Monthly review meeting for ongoing research projects",
-            start_time: "2024-03-25T15:00:00",
-            end_time: "2024-03-25T16:30:00",
-            location: "Conference Room C-301",
-            type: "meeting",
-            attendees_count: 8,
-            is_organizer: false
-          }
-        ]);
+        // Fallback to empty arrays if API fails
+        setCourses([]);
+        setStudents([]);
+        setResearch([]);
+        setAssignments([]);
+        setEvents([]);
       } finally {
         setLoading(false);
       }
@@ -482,7 +249,7 @@ export default function FacultyDashboard() {
   const stats = [
     {
       title: "Active Courses",
-      value: courses.filter(c => c.status === "Active").length,
+      value: courses.filter(c => c.status === "active").length,
       icon: "📚",
       color: "from-blue-500 to-blue-600",
       change: "+1 this semester",
@@ -556,16 +323,16 @@ export default function FacultyDashboard() {
   };
 
   const tabs = [
-    { id: "overview", label: "Overview", icon: "📊" },
-    { id: "students", label: "Students", icon: "👨‍🎓" },
-    { id: "courses", label: "Courses", icon: "📚" },
-    { id: "research", label: "Research", icon: "🔬" },
-    { id: "assignments", label: "Assignments", icon: "📝" },
-    { id: "events", label: "Events", icon: "📅" },
-    { id: "timetable", label: "Timetable", icon: "🕐" },
-    { id: "canteen", label: "Canteen", icon: "☕" },
-    { id: "ai-insights", label: "AI Insights", icon: "🧠" },
-    ...(user?.email?.includes('head') ? [{ id: "committee", label: "Committee Management", icon: "🏛️" }] : [])
+    { id: "overview", label: "Overview", icon: "📊", description: "Dashboard overview" },
+    { id: "students", label: "Students", icon: "👨‍🎓", description: "Student management" },
+    { id: "courses", label: "Courses", icon: "📚", description: "Course management" },
+    { id: "research", label: "Research", icon: "🔬", description: "Research projects" },
+    { id: "assignments", label: "Assignments", icon: "📝", description: "Assignment tracking" },
+    { id: "events", label: "Events", icon: "📅", description: "Event management" },
+    { id: "timetable", label: "Timetable", icon: "🕐", description: "Schedule management" },
+    { id: "canteen", label: "Canteen", icon: "☕", description: "Canteen orders" },
+    { id: "ai-insights", label: "AI Insights", icon: "🧠", description: "AI analytics" },
+    ...(user?.email?.includes('head') ? [{ id: "committee", label: "Committee Management", icon: "🏛️", description: "Committee oversight" }] : [])
   ];
 
   if (loading) {
@@ -628,7 +395,9 @@ export default function FacultyDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <tab.icon className={`w-5 h-5 transition-transform duration-200 ${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-105'}`} />
+                <span className={`text-xl transition-transform duration-200 ${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-105'}`}>
+                  {tab.icon}
+                </span>
                 <div className="text-left">
                   <span className="block">{tab.label}</span>
                   <span className="text-xs text-gray-400 hidden sm:block">{tab.description}</span>
@@ -806,7 +575,7 @@ export default function FacultyDashboard() {
                       <p className="text-sm text-gray-500 dark:text-gray-500">{course.description}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      course.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
+                      course.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                       'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                     }`}>
                       {course.status}
@@ -856,8 +625,8 @@ export default function FacultyDashboard() {
                       <p className="text-sm text-gray-600 dark:text-gray-400">Due: {new Date(assignment.due_date).toLocaleDateString()}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      assignment.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
-                      assignment.status === 'Completed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                      assignment.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                      assignment.status === 'completed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
                       'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                     }`}>
                       {assignment.status}
@@ -906,8 +675,8 @@ export default function FacultyDashboard() {
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white">{project.title}</h3>
                     <span className={`px-3 py-1 rounded-full text-sm ${
-                      project.status === 'Active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-                      project.status === 'Planning' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
+                      project.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                      project.status === 'planning' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
                       'bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200'
                     }`}>
                       {project.status}
@@ -949,7 +718,7 @@ export default function FacultyDashboard() {
                   </div>
 
                   <button className="w-full bg-gradient-to-r from-purple-500 to-violet-500 text-white py-2 rounded-lg hover:from-purple-600 hover:to-violet-600 transition-all duration-300">
-                    {project.status === 'Active' ? 'Manage Project' : 'View Details'}
+                    {project.status === 'active' ? 'Manage Project' : 'View Details'}
                   </button>
                 </div>
               ))}
@@ -1176,65 +945,80 @@ export default function FacultyDashboard() {
                 </h3>
               </div>
               <div className="p-6">
-                <div className="grid grid-cols-8 gap-4 mb-4">
-                  <div className="text-center font-semibold text-gray-900">Time</div>
-                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
-                    <div key={day} className="text-center font-semibold text-gray-900">{day}</div>
-                  ))}
-                </div>
-
-                {[
-                  { time: '9:00-10:30', classes: ['Database Systems\nRoom A-101\nCSE-3A (45 students)', 'Office Hours\nFaculty Room 205\nStudent Consultations', 'Machine Learning\nLab B-205\nCSE-3B (40 students)', 'Research Work\nResearch Lab\nPhD Guidance', 'Database Systems\nRoom A-101\nCSE-3C (42 students)', '', ''] },
-                  { time: '10:45-12:15', classes: ['Research Meeting\nConference Room\nProject Review', 'Database Systems\nRoom A-101\nCSE-3B (40 students)', 'Faculty Meeting\nAdmin Block\nDepartment Meeting', 'Machine Learning\nLab B-205\nCSE-3A (45 students)', 'Office Hours\nFaculty Room 205\nStudent Consultations', '', ''] },
-                  { time: '1:00-2:30', classes: ['Machine Learning\nLab B-205\nCSE-3C (42 students)', 'Research Work\nResearch Lab\nPaper Writing', 'Office Hours\nFaculty Room 205\nStudent Consultations', 'Database Systems\nRoom A-101\nCSE-3A (45 students)', 'Research Supervision\nResearch Lab\nMTech Guidance', '', ''] },
-                  { time: '2:45-4:15', classes: ['Office Hours\nFaculty Room 205\nStudent Consultations', 'Machine Learning\nLab B-205\nCSE-3B (40 students)', 'Research Work\nResearch Lab\nData Analysis', 'Office Hours\nFaculty Room 205\nStudent Consultations', 'Faculty Seminar\nSeminar Hall\nTech Talk', '', ''] },
-                  { time: '4:30-6:00', classes: ['Research Work\nResearch Lab\nProject Development', '', 'Research Work\nResearch Lab\nExperiment Setup', '', '', '', ''] }
-                ].map((slot, slotIndex) => (
-                  <div key={slotIndex} className="grid grid-cols-8 gap-4 mb-2">
-                    <div className="bg-gray-50 rounded-lg p-3 text-center font-medium text-gray-700">
-                      {slot.time}
+                {timetableData && timetableData.timetable ? (
+                  <>
+                    <div className="grid grid-cols-8 gap-4 mb-4">
+                      <div className="text-center font-semibold text-gray-900">Time</div>
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                        <div key={day} className="text-center font-semibold text-gray-900">{day}</div>
+                      ))}
                     </div>
-                    {slot.classes.map((classInfo, dayIndex) => (
-                      <div
-                        key={dayIndex}
-                        className={`rounded-lg p-3 text-xs ${
-                          classInfo
-                            ? classInfo.includes('Database Systems')
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : classInfo.includes('Machine Learning')
-                              ? 'bg-green-100 text-green-800 border border-green-200'
-                              : classInfo.includes('Office Hours')
-                              ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-                              : classInfo.includes('Research')
-                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                              : 'bg-orange-100 text-orange-800 border border-orange-200'
-                            : 'bg-gray-50 text-gray-400'
-                        }`}
-                      >
-                        {classInfo ? (
-                          <div className="space-y-1">
-                            {classInfo.split('\n').map((line, lineIndex) => (
-                              <div
-                                key={lineIndex}
-                                className={
-                                  lineIndex === 0
-                                    ? 'font-semibold'
-                                    : lineIndex === 1
-                                    ? 'text-xs opacity-80'
-                                    : 'text-xs opacity-70'
-                                }
-                              >
-                                {line}
-                              </div>
-                            ))}
+
+                    {/* Group by time slots */}
+                    {(() => {
+                      const timeSlots: {[time: string]: {[day: string]: any[]}} = {};
+
+                      // Group classes by time and day
+                      Object.entries(timetableData.timetable).forEach(([day, classes]) => {
+                        (classes as any[]).forEach(cls => {
+                          const time = cls.time || 'TBA';
+                          if (!timeSlots[time]) {
+                            timeSlots[time] = {};
+                          }
+                          if (!timeSlots[time][day]) {
+                            timeSlots[time][day] = [];
+                          }
+                          timeSlots[time][day].push(cls);
+                        });
+                      });
+
+                      return Object.entries(timeSlots).map(([time, dayClasses]) => (
+                        <div key={time} className="grid grid-cols-8 gap-4 mb-2">
+                          <div className="bg-gray-50 rounded-lg p-3 text-center font-medium text-gray-700">
+                            {time}
                           </div>
-                        ) : (
-                          <div className="text-center">Free</div>
-                        )}
-                      </div>
-                    ))}
+                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
+                            const classes = dayClasses[day] || [];
+                            return (
+                              <div
+                                key={day}
+                                className={`rounded-lg p-3 text-xs ${
+                                  classes.length > 0
+                                    ? classes[0].type === 'lecture'
+                                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                      : classes[0].type === 'lab'
+                                      ? 'bg-green-100 text-green-800 border border-green-200'
+                                      : 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : 'bg-gray-50 text-gray-400'
+                                }`}
+                              >
+                                {classes.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {classes.map((cls: any, idx: number) => (
+                                      <div key={idx}>
+                                        <div className="font-semibold">{cls.subject || cls.subject_code}</div>
+                                        <div className="text-xs opacity-80">{cls.room}</div>
+                                        {cls.course && <div className="text-xs opacity-70">{cls.course} {cls.semester}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-center">Free</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">📅</div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">No timetable available</h4>
+                    <p className="text-gray-600">Your teaching schedule will appear here once it's set up.</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -1579,3 +1363,4 @@ export default function FacultyDashboard() {
     </div>
   );
 }
+

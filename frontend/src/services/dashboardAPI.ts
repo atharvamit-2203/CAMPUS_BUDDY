@@ -158,16 +158,49 @@ export const studentAPI = {
     });
   },
 
-  // Get student organizations
-  getOrganizations: async () => {
-    return apiCall('/organizations');
+  // Get clubs (replaces organizations)
+  getClubs: async () => {
+    return apiCall('/clubs');
   },
 
-  // Join organization
-  joinOrganization: async (orgId: number) => {
-    return apiCall(`/organizations/${orgId}/join`, {
+  // Get student organizations (alias for backward compatibility)
+  getOrganizations: async () => {
+    return apiCall('/clubs');
+  },
+
+  // Join club
+  joinClub: async (clubId: number) => {
+    return apiCall(`/clubs/${clubId}/join`, {
       method: 'POST',
     });
+  },
+
+  // Join organization (alias for backward compatibility)
+  joinOrganization: async (orgId: number) => {
+    return apiCall(`/clubs/${orgId}/join`, {
+      method: 'POST',
+    });
+  },
+
+  // Apply to club with detailed application
+  applyToClub: async (clubId: number, applicationData: any) => {
+    return apiCall(`/clubs/${clubId}/apply`, {
+      method: 'POST',
+      body: JSON.stringify(applicationData),
+    });
+  },
+
+  // Get my clubs
+  getMyClubs: async () => {
+    return apiCall('/clubs/my');
+  },
+
+  // Search clubs
+  searchClubs: async (query: string = '', category: string = '') => {
+    const params = new URLSearchParams();
+    if (query) params.append('query', query);
+    if (category) params.append('category', category);
+    return apiCall(`/clubs/search?${params.toString()}`);
   },
 
   // Get student skills

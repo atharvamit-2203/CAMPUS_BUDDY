@@ -146,6 +146,43 @@ export interface StudentAnalytics {
   recent_submissions: number;
 }
 
+export interface CanteenMenuItem {
+  id: string;
+  item_name: string;
+  description: string;
+  price: number;
+  image_url?: string;
+  emoji?: string;
+  is_vegetarian: boolean;
+  is_available: boolean;
+  preparation_time?: number;
+  allergens?: string[];
+  category_name: string;
+}
+
+export interface CanteenCategory {
+  id: number;
+  category_name: string;
+  description?: string;
+  items: CanteenMenuItem[];
+}
+
+export interface FacultyTimetable {
+  timetable: {
+    [day: string]: Array<{
+      time: string;
+      subject: string;
+      subject_code?: string;
+      faculty?: string;
+      room: string;
+      location?: string;
+      course?: string;
+      semester?: string;
+      type: string;
+    }>;
+  };
+}
+
 // Organization-specific interfaces
 export interface OrganizationEvent {
   id: number;
@@ -314,7 +351,7 @@ export const studentAPI = {
   },
 
   getTimetable: async () => {
-    return await apiCall('/student/timetable');
+    return await apiCall('/timetable/student');
   },
 };
 
@@ -342,8 +379,8 @@ export const facultyAPI = {
     return await apiCall('/faculty/students/analytics');
   },
 
-  getTimetable: async () => {
-    return await apiCall('/faculty/timetable');
+  getTimetable: async (): Promise<FacultyTimetable> => {
+    return await apiCall('/timetable/faculty');
   },
 
   updateTimetable: async (timetable: TimetableSlot[]) => {
@@ -366,6 +403,29 @@ export const facultyAPI = {
 
   getResearchProjects: async () => {
     return await apiCall('/faculty/research');
+  },
+
+  getCanteenMenu: async (): Promise<{[category: string]: Array<{id: string, name: string, price: number, description: string, image: string, category: string}>}> => {
+    const response = await apiCall('/canteen/menu');
+    // Transform the response to match expected format
+    const menuData: {[category: string]: Array<{id: string, name: string, price: number, description: string, image: string, category: string}>} = {};
+    if (response && Array.isArray(response)) {
+      response.forEach((category: CanteenCategory) => {
+        menuData[category.category_name.toLowerCase()] = category.items.map(item => ({
+          id: item.id.toString(),
+          name: item.item_name,
+          price: item.price,
+          description: item.description || '',
+          image: item.emoji || '🍽️',
+          category: category.category_name.toLowerCase()
+        }));
+      });
+    }
+    return menuData;
+  },
+
+  getEvents: async (): Promise<Event[]> => {
+    return await apiCall('/events');
   },
 };
 
