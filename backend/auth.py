@@ -115,8 +115,14 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    token = credentials.credentials
-    username = verify_token(token, credentials_exception)
+    try:
+        token = credentials.credentials
+        print(f"🔍 AUTH DEBUG: Received token: {token[:20]}..." if token else "No token received")
+        username = verify_token(token, credentials_exception)
+        print(f"🔍 AUTH DEBUG: Extracted username: {username}")
+    except Exception as e:
+        print(f"❌ AUTH DEBUG: Token verification failed: {str(e)}")
+        raise credentials_exception
 
     # Fetch user from MySQL by username
     connection = None
@@ -126,11 +132,15 @@ def get_current_user(
         cursor = connection.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users WHERE username = %s LIMIT 1", (username,))
         row = cursor.fetchone()
+        print(f"🔍 AUTH DEBUG: User lookup for '{username}': {'Found' if row else 'Not found'}")
         if not row:
+            print(f"❌ AUTH DEBUG: No user found with username: {username}")
             raise credentials_exception
+        print(f"✅ AUTH DEBUG: User authenticated: {row['full_name']} ({row['role']})")
         return row
-    except Exception:
+    except Exception as e:
         # Hide internal errors from clients; present as auth failure
+        print(f"❌ AUTH DEBUG: Database error during user lookup: {str(e)}")
         raise credentials_exception
     finally:
         if cursor:

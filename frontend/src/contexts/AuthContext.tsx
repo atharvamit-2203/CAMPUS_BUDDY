@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { User, AuthState, RegisterFormData } from '@/types/auth';
 import { authAPI } from '@/services/api';
 
@@ -112,7 +112,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         payload: { 
           user: {
             ...response.user,
-role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
+            college_id: Number(response.user.college_id) || undefined,
+role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff' | 'admin',
+            is_active: true,
+            is_verified: true,
             created_at: new Date().toISOString()
           }, 
           token: response.access_token 
@@ -138,7 +141,10 @@ role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
         payload: { 
           user: { 
             ...response.user, 
-role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
+            college_id: Number(response.user.college_id) || undefined,
+role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff' | 'admin',
+            is_active: true,
+            is_verified: true,
             created_at: new Date().toISOString() 
           }, 
           token: response.access_token 
@@ -170,9 +176,9 @@ role: response.user.role as 'student' | 'faculty' | 'organization' | 'staff',
     }
   };
 
-  const setIntendedRoute = (path: string | null) => {
+  const setIntendedRoute = useCallback((path: string | null) => {
     dispatch({ type: 'SET_INTENDED_ROUTE', payload: path });
-  };
+  }, []);
 
   const value = {
     ...state,

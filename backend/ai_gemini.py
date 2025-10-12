@@ -54,31 +54,88 @@ def normalize_time_24h(time_str: str) -> str:
     if not time_str:
         return time_str
     
-    # Extract hour and minute
+    # Clean up the input string
+    time_str = time_str.strip().upper()
+    
+    # Handle explicit AM/PM cases first
+    if 'AM' in time_str or 'PM' in time_str:
+        return convert_ampm_to_24h(time_str)
+    
+    # Handle pure numeric format
     time_parts = time_str.split(':')
     if len(time_parts) < 2:
+        # Handle single digit hour (e.g., "9" -> "09:00")
+        try:
+            single_hour = int(time_str)
+            if single_hour >= 1 and single_hour <= 12:
+                # Assume morning hours for single digits in academic context
+                return f"{single_hour:02d}:00"
+            elif single_hour >= 13 and single_hour <= 18:
+                return f"{single_hour:02d}:00"
+        except ValueError:
+            pass
         return time_str
         
     try:
         hour = int(time_parts[0])
         minute = int(time_parts[1]) if len(time_parts) > 1 else 0
         
-        # Fix common OCR misinterpretation: 21:00 for 9 AM should be 09:00
-        if hour == 21 and minute == 0:  # 9 PM -> 9 AM
+        # Fix common OCR/AI misinterpretations where evening times are used for morning lectures
+        # In academic timetables, lectures typically happen 7 AM - 6 PM (07:00 - 18:00)
+        
+        # Direct fixes for common misinterpretations
+        if hour == 21:  # 21:00 (9 PM) -> 09:00 (9 AM)
             hour = 9
-        elif hour == 22 and minute == 0:  # 10 PM -> 10 AM  
+        elif hour == 22:  # 22:00 (10 PM) -> 10:00 (10 AM)  
             hour = 10
-        elif hour == 23 and minute == 0:  # 11 PM -> 11 AM
+        elif hour == 23:  # 23:00 (11 PM) -> 11:00 (11 AM)
             hour = 11
-        elif hour > 18 and hour <= 23:  # Other evening times that might be morning
-            # If it's between 19-23, it might be morning time misinterpreted
+        elif hour == 20:  # 20:00 (8 PM) -> 08:00 (8 AM)
+            hour = 8
+        elif hour == 19:  # 19:00 (7 PM) -> 07:00 (7 AM) - less common but possible
+            hour = 7
+        elif hour > 18 and hour <= 23:  # Any other evening time that seems like morning
+            # For academic schedules, evening times (19-23) are likely morning times (7-11)
             potential_morning = hour - 12
-            if potential_morning >= 7 and potential_morning <= 11:  # 7-11 AM range
+            if potential_morning >= 7 and potential_morning <= 11:
                 hour = potential_morning
+        
+        # Handle edge cases for very early hours (might be afternoon in 12-hour format)
+        if hour >= 1 and hour <= 6:
+            # In academic context, 1-6 could be 1 PM - 6 PM (13-18 in 24h)
+            # We'll assume afternoon if it's a typical lecture time
+            if minute == 0 or minute == 30:  # Common academic time slots
+                hour = hour + 12  # Convert to afternoon
         
         # Ensure hour is in valid range
         hour = max(0, min(23, hour))
         minute = max(0, min(59, minute))
+        
+        return f"{hour:02d}:{minute:02d}"
+    except ValueError:
+        return time_str
+
+def convert_ampm_to_24h(time_str: str) -> str:
+    """Convert AM/PM time to 24-hour format"""
+    time_str = time_str.strip().upper()
+    is_pm = 'PM' in time_str
+    is_am = 'AM' in time_str
+    
+    # Remove AM/PM and clean
+    clean_time = time_str.replace('AM', '').replace('PM', '').strip()
+    
+    try:
+        if ':' in clean_time:
+            hour, minute = map(int, clean_time.split(':'))
+        else:
+            hour = int(clean_time)
+            minute = 0
+        
+        # Convert to 24-hour format
+        if is_pm and hour != 12:
+            hour += 12
+        elif is_am and hour == 12:
+            hour = 0
         
         return f"{hour:02d}:{minute:02d}"
     except ValueError:
@@ -402,12 +459,16 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
     img = await file.read()
     instruction = (
         "Extract timetable as JSON array. Each entry: {day_of_week (e.g., Monday), start_time (HH:MM in 24-hour format), end_time (HH:MM in 24-hour format), subject, room (optional), faculty (optional)}."
-        " IMPORTANT INSTRUCTIONS:"
-        " 1. Convert ALL times to 24-hour format (09:00, not 21:00 for 9 AM)"
-        " 2. Morning times 8 AM-12 PM should be 08:00-12:00, afternoon 1 PM-6 PM should be 13:00-18:00"
-        " 3. Skip entries that are clearly lunch breaks, recess, or break times"
-        " 4. If the same subject appears in consecutive time slots, include it in BOTH slots"
-        " 5. Only include actual lecture/class subjects, not 'LUNCH', 'BREAK', 'RECESS'"
+        " CRITICAL TIME FORMAT INSTRUCTIONS:"
+        " 1. Academic timetables use MORNING and AFTERNOON times, NOT evening times"
+        " 2. Morning lectures (8 AM - 12 PM) = 08:00 - 12:00 in 24-hour format"
+        " 3. Afternoon lectures (1 PM - 6 PM) = 13:00 - 18:00 in 24-hour format"
+        " 4. NEVER use 19:00-23:00 (7 PM-11 PM) for academic lectures - these should be converted to morning times"
+        " 5. Examples: '9 AM' = 09:00, '10 AM' = 10:00, '2 PM' = 14:00, '3 PM' = 15:00"
+        " 6. If you see times like 21:00, 22:00, 23:00 - these are WRONG and should be 09:00, 10:00, 11:00"
+        " 7. Skip entries that are clearly lunch breaks, recess, or break times"
+        " 8. If the same subject appears in consecutive time slots, include it in BOTH slots"
+        " 9. Only include actual lecture/class subjects, not 'LUNCH', 'BREAK', 'RECESS'"
         " Ensure day_of_week is a valid weekday string. Return ONLY a JSON array (no commentary)."
     )
     try:
@@ -481,9 +542,15 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
         
         def as_time(s: str) -> str:
             s = (s or "").strip()
+            # Log original time for debugging
+            print(f"DEBUG: Original time input: '{s}'")
             normalized = normalize_time_24h(s)
+            print(f"DEBUG: Normalized time: '{normalized}'")
             if len(normalized) == 5 and normalized.count(":") == 1:
-                return normalized + ":00"
+                result = normalized + ":00"
+                print(f"DEBUG: Final time result: '{result}'")
+                return result
+            print(f"DEBUG: Final time result (no seconds): '{normalized}'")
             return normalized
             
 
@@ -584,6 +651,30 @@ async def upload_timetable(file: UploadFile = File(...), current_user = Depends(
         if 'conn' in locals():
             try: conn.close()
             except Exception: pass
+
+@router.post("/timetable/test-time-parsing")
+async def test_time_parsing(time_data: dict, current_user = Depends(auth.get_current_user)):
+    """Test endpoint to debug time parsing issues"""
+    test_times = time_data.get("times", [])
+    results = []
+    
+    for time_str in test_times:
+        try:
+            normalized = normalize_time_24h(str(time_str))
+            results.append({
+                "input": time_str,
+                "output": normalized,
+                "status": "success"
+            })
+        except Exception as e:
+            results.append({
+                "input": time_str,
+                "output": None,
+                "status": "error",
+                "error": str(e)
+            })
+    
+    return {"results": results}
 
 @router.post("/ai/canteen/menu-ocr")
 async def canteen_menu_ocr(file: UploadFile = File(...), replace: bool = True, current_user = Depends(auth.get_current_user)):

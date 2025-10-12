@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { 
   MapPin, 
@@ -80,226 +80,51 @@ const CampusNavigationPage = () => {
   const [navigationMode, setNavigationMode] = useState<'walking' | 'driving' | 'cycling'>('walking');
   const mapRef = useRef<HTMLDivElement>(null);
 
-  // Sample campus locations data
-  const [locations] = useState<Location[]>([
-    // Academic Buildings
-    {
-      id: '1',
-      name: 'Computer Science Department',
-      description: 'Main computer science building with labs, classrooms, and faculty offices',
-      category: 'academic',
-      coordinates: { lat: 19.0760, lng: 72.8777 },
-      floor: 3,
-      building: 'CS Block',
-      openHours: '8:00 AM - 8:00 PM',
-      contact: 'cs@college.edu',
-      amenities: ['WiFi', 'Computer Labs', 'Projectors', 'AC', 'Faculty Offices'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.5,
-      reviews: 120,
-      isIndoor: true
-    },
-    {
-      id: '2',
-      name: 'Central Library',
-      description: 'Main campus library with extensive collection and study areas',
-      category: 'academic',
-      coordinates: { lat: 19.0765, lng: 72.8780 },
-      floor: 4,
-      building: 'Library Block',
-      openHours: '7:00 AM - 11:00 PM',
-      contact: 'library@college.edu',
-      amenities: ['Silent Study Area', 'Group Discussion Rooms', 'Digital Library', 'Printing', 'AC'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.7,
-      reviews: 200,
-      isIndoor: true
-    },
-    {
-      id: '3',
-      name: 'Lecture Hall Complex',
-      description: 'Large auditoriums and lecture halls for events and classes',
-      category: 'academic',
-      coordinates: { lat: 19.0770, lng: 72.8775 },
-      building: 'LH Block',
-      openHours: '8:00 AM - 6:00 PM',
-      amenities: ['Audio Visual Equipment', 'AC', 'Stage', 'Sound System'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.3,
-      reviews: 85,
-      isIndoor: true
-    },
+  // Campus locations data will be fetched from API
+  const [locations, setLocations] = useState<Location[]>([]);
+  
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
 
-    // Dining
-    {
-      id: '4',
-      name: 'Main Canteen',
-      description: 'Primary dining facility with variety of food options',
-      category: 'dining',
-      coordinates: { lat: 19.0762, lng: 72.8782 },
-      building: 'Canteen Block',
-      openHours: '7:00 AM - 9:00 PM',
-      contact: 'canteen@college.edu',
-      amenities: ['Multiple Counters', 'Seating Area', 'Vegetarian Options', 'Payment Cards'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.1,
-      reviews: 350,
-      isIndoor: true
-    },
-    {
-      id: '5',
-      name: 'Food Court',
-      description: 'Modern food court with various food stalls and cuisines',
-      category: 'dining',
-      coordinates: { lat: 19.0758, lng: 72.8785 },
-      building: 'Student Center',
-      openHours: '8:00 AM - 10:00 PM',
-      amenities: ['Multiple Cuisines', 'Outdoor Seating', 'Fast Food', 'Beverages'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.4,
-      reviews: 180,
-      isIndoor: false
-    },
+  // Fetch locations and saved places from API
+  useEffect(() => {
+    const fetchLocationData = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+        
+        // Fetch campus locations
+        const locationsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/student/locations`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (locationsResponse.ok) {
+          const locationsData = await locationsResponse.json();
+          setLocations(locationsData.locations || []);
+        }
 
-    // Recreation
-    {
-      id: '6',
-      name: 'Sports Complex',
-      description: 'Complete sports facility with courts and gymnasium',
-      category: 'recreation',
-      coordinates: { lat: 19.0755, lng: 72.8770 },
-      building: 'Sports Block',
-      openHours: '6:00 AM - 9:00 PM',
-      contact: 'sports@college.edu',
-      amenities: ['Basketball Court', 'Badminton Courts', 'Gymnasium', 'Changing Rooms'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.6,
-      reviews: 95,
-      isIndoor: true
-    },
-    {
-      id: '7',
-      name: 'Swimming Pool',
-      description: 'Olympic size swimming pool with modern facilities',
-      category: 'recreation',
-      coordinates: { lat: 19.0753, lng: 72.8768 },
-      openHours: '6:00 AM - 8:00 PM',
-      amenities: ['Olympic Pool', 'Changing Rooms', 'Shower Facilities', 'Lifeguard'],
-      image: '/api/placeholder/400/250',
-      accessibility: false,
-      rating: 4.2,
-      reviews: 60,
-      isIndoor: false
-    },
+        // Fetch saved places
+        const savedPlacesResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/student/saved-places`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (savedPlacesResponse.ok) {
+          const savedPlacesData = await savedPlacesResponse.json();
+          setSavedPlaces(savedPlacesData.savedPlaces || []);
+        }
+      } catch (error) {
+        console.error('Error fetching location data:', error);
+        setLocations([]);
+        setSavedPlaces([]);
+      }
+    };
 
-    // Services
-    {
-      id: '8',
-      name: 'Administrative Office',
-      description: 'Main administrative building for student services',
-      category: 'services',
-      coordinates: { lat: 19.0768, lng: 72.8778 },
-      floor: 2,
-      building: 'Admin Block',
-      openHours: '9:00 AM - 5:00 PM',
-      contact: 'admin@college.edu',
-      amenities: ['Student Services', 'Admission Office', 'Accounts', 'Document Processing'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 3.8,
-      reviews: 150,
-      isIndoor: true
-    },
-    {
-      id: '9',
-      name: 'Medical Center',
-      description: 'Campus health center with medical facilities',
-      category: 'services',
-      coordinates: { lat: 19.0764, lng: 72.8772 },
-      building: 'Health Center',
-      openHours: '8:00 AM - 6:00 PM',
-      contact: 'health@college.edu',
-      amenities: ['Emergency Care', 'Pharmacy', 'Doctor Consultation', 'First Aid'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.0,
-      reviews: 80,
-      isIndoor: true
-    },
-
-    // Parking
-    {
-      id: '10',
-      name: 'Main Parking Area',
-      description: 'Primary parking facility for students and faculty',
-      category: 'parking',
-      coordinates: { lat: 19.0750, lng: 72.8775 },
-      openHours: '24/7',
-      amenities: ['CCTV Security', 'Two Wheeler Parking', 'Car Parking', 'Security Guard'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 3.5,
-      reviews: 45,
-      isIndoor: false
-    },
-
-    // Hostels
-    {
-      id: '11',
-      name: 'Boys Hostel Block A',
-      description: 'Residential facility for male students',
-      category: 'hostel',
-      coordinates: { lat: 19.0745, lng: 72.8785 },
-      building: 'Hostel A',
-      openHours: '24/7',
-      contact: 'hostel.boys@college.edu',
-      amenities: ['WiFi', 'Common Room', 'Mess', 'Laundry', 'Security'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 3.9,
-      reviews: 120,
-      isIndoor: true
-    },
-    {
-      id: '12',
-      name: 'Girls Hostel Block B',
-      description: 'Residential facility for female students',
-      category: 'hostel',
-      coordinates: { lat: 19.0748, lng: 72.8788 },
-      building: 'Hostel B',
-      openHours: '24/7',
-      contact: 'hostel.girls@college.edu',
-      amenities: ['WiFi', 'Common Room', 'Mess', 'Laundry', 'Security', 'Study Room'],
-      image: '/api/placeholder/400/250',
-      accessibility: true,
-      rating: 4.1,
-      reviews: 90,
-      isIndoor: true
-    }
-  ]);
-
-  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([
-    {
-      id: '1',
-      name: 'My Classroom',
-      location: locations[0],
-      addedAt: '2024-01-15',
-      category: 'favorite'
-    },
-    {
-      id: '2',
-      name: 'Favorite Study Spot',
-      location: locations[1],
-      addedAt: '2024-01-20',
-      category: 'bookmark'
-    }
-  ]);
+    fetchLocationData();
+  }, []);
 
   const categories = [
     { id: 'all', name: 'All Locations', icon: MapIcon, count: locations.length },

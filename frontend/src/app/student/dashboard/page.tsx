@@ -75,43 +75,7 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-// Sample data (in a real app, this would come from your backend)
-const sampleProfile: StudentProfile = {
-  id: '1',
-  fullName: 'Alex Johnson',
-  course: 'Computer Science Engineering',
-  batch: 'Class of 2025',
-  skills: ['JavaScript', 'React', 'Python', 'Machine Learning', 'Node.js', 'TypeScript'],
-  interests: ['Web Development', 'Artificial Intelligence', 'Entrepreneurship', 'Blockchain', 'UI/UX Design'],
-  avatarUrl: '/api/placeholder/80/80'
-};
-
-const sampleClubs: RecommendedClub[] = [
-  { id: '1', name: 'AI & Machine Learning Society', description: 'Explore artificial intelligence and machine learning technologies', memberCount: 248 },
-  { id: '2', name: 'Web Development Club', description: 'Learn modern web development technologies and frameworks', memberCount: 156 },
-  { id: '3', name: 'Entrepreneurship Cell', description: 'Foster entrepreneurial thinking and startup culture', memberCount: 189 },
-  { id: '4', name: 'Blockchain Technology Group', description: 'Dive into blockchain, crypto, and Web3 technologies', memberCount: 97 },
-  { id: '5', name: 'UI/UX Design Community', description: 'Master user interface and user experience design', memberCount: 134 },
-  { id: '6', name: 'Competitive Programming Club', description: 'Enhance problem-solving skills through competitive coding', memberCount: 203 }
-];
-
-const sampleNetworking: NetworkingProfile[] = [
-  { id: '1', fullName: 'Sarah Chen', course: 'Data Science', commonInterests: ['AI', 'Machine Learning', 'Python'] },
-  { id: '2', fullName: 'Mike Rodriguez', course: 'Computer Science', commonInterests: ['Web Development', 'JavaScript'] },
-  { id: '3', fullName: 'Emily Watson', course: 'Business Administration', commonInterests: ['Entrepreneurship', 'Startups'] },
-  { id: '4', fullName: 'David Kim', course: 'Information Technology', commonInterests: ['Blockchain', 'Web3'] },
-  { id: '5', fullName: 'Lisa Zhang', course: 'Design', commonInterests: ['UI/UX Design', 'Creative Tech'] },
-  { id: '6', fullName: 'James Wilson', course: 'Computer Engineering', commonInterests: ['AI', 'Robotics'] }
-];
-
-const sampleEvents: Event[] = [
-  { id: '1', title: 'Advanced React Patterns Workshop', date: '2025-09-12', time: '2:00 PM - 5:00 PM', location: 'Tech Lab A-201', type: 'workshop' },
-  { id: '2', title: 'Future of AI: Industry Panel Discussion', date: '2025-09-15', time: '10:00 AM - 12:00 PM', location: 'Main Auditorium', type: 'seminar' },
-  { id: '3', title: 'Startup Pitch Competition 2025', date: '2025-09-20', time: '9:00 AM - 6:00 PM', location: 'Innovation Hub', type: 'competition' },
-  { id: '4', title: 'Blockchain & Web3 Meetup', date: '2025-09-18', time: '6:00 PM - 8:00 PM', location: 'Conference Room B-105', type: 'social' },
-  { id: '5', title: 'UI/UX Design Sprint', date: '2025-09-22', time: '1:00 PM - 4:00 PM', location: 'Design Studio', type: 'workshop' },
-  { id: '6', title: 'Tech Career Fair 2025', date: '2025-09-25', time: '10:00 AM - 4:00 PM', location: 'Campus Central Plaza', type: 'seminar' }
-];
+// All data will be fetched from backend APIs
 
 export default function StudentDashboard() {
   const { user, isAuthenticated } = useAuth();
@@ -129,55 +93,10 @@ const [activeTab, setActiveTab] = useState<'overview' | 'networking' | 'events' 
   const [selectedCategory, setSelectedCategory] = useState<string>('breakfast');
   const [showCart, setShowCart] = useState(false);
   
-  // Sample menu data
-  const menuData = {
-    breakfast: [
-      { id: 'b1', name: 'Aloo Paratha', price: 60, description: 'Stuffed potato flatbread with butter', image: '🥞' },
-      { id: 'b2', name: 'Poha', price: 40, description: 'Flattened rice with onions and spices', image: '🍚' },
-      { id: 'b3', name: 'Upma', price: 35, description: 'Semolina breakfast with vegetables', image: '🥣' },
-      { id: 'b4', name: 'Bread Omelette', price: 50, description: 'Fluffy omelette with bread slices', image: '🍳' },
-      { id: 'b5', name: 'Masala Dosa', price: 80, description: 'Crispy crepe with potato filling', image: '🥞' },
-      { id: 'b6', name: 'Idli Sambhar', price: 45, description: 'Steamed rice cakes with lentil curry', image: '🍘' }
-    ],
-    lunch: [
-      { id: 'l1', name: 'Veg Thali', price: 120, description: 'Complete meal with rice, dal, vegetables, roti', image: '🍛' },
-      { id: 'l2', name: 'Chicken Biryani', price: 180, description: 'Aromatic basmati rice with chicken', image: '🍚' },
-      { id: 'l3', name: 'Paneer Butter Masala', price: 140, description: 'Creamy cottage cheese curry with naan', image: '🍛' },
-      { id: 'l4', name: 'Rajma Rice', price: 100, description: 'Kidney bean curry with steamed rice', image: '🍚' },
-      { id: 'l5', name: 'Fish Curry', price: 160, description: 'South Indian fish curry with rice', image: '🐟' },
-      { id: 'l6', name: 'Chole Bhature', price: 110, description: 'Spicy chickpeas with fried bread', image: '🍞' }
-    ],
-    snacks: [
-      { id: 's1', name: 'Samosa', price: 25, description: 'Crispy fried pastry with potato filling', image: '🥟' },
-      { id: 's2', name: 'Pakoras', price: 40, description: 'Mixed vegetable fritters', image: '🥢' },
-      { id: 's3', name: 'Sandwich', price: 80, description: 'Grilled vegetable sandwich', image: '🥪' },
-      { id: 's4', name: 'Pav Bhaji', price: 90, description: 'Spiced vegetable curry with bread rolls', image: '🍞' },
-      { id: 's5', name: 'Chaat', price: 50, description: 'Tangy street food snack', image: '🥗' },
-      { id: 's6', name: 'Spring Roll', price: 60, description: 'Crispy vegetable spring rolls', image: '🌯' }
-    ],
-    beverages: [
-      { id: 'bv1', name: 'Masala Chai', price: 20, description: 'Spiced Indian tea', image: '☕' },
-      { id: 'bv2', name: 'Coffee', price: 30, description: 'Hot coffee with milk', image: '☕' },
-      { id: 'bv3', name: 'Fresh Lime Water', price: 25, description: 'Refreshing lime juice', image: '🍋' },
-      { id: 'bv4', name: 'Lassi', price: 40, description: 'Yogurt-based drink', image: '🥛' },
-      { id: 'bv5', name: 'Cold Coffee', price: 50, description: 'Iced coffee with ice cream', image: '🧊' },
-      { id: 'bv6', name: 'Fresh Juice', price: 60, description: 'Seasonal fruit juice', image: '🧃' }
-    ],
-    desserts: [
-      { id: 'd1', name: 'Gulab Jamun', price: 40, description: 'Sweet milk dumplings in syrup', image: '🍰' },
-      { id: 'd2', name: 'Ice Cream', price: 50, description: 'Vanilla/Chocolate ice cream', image: '🍦' },
-      { id: 'd3', name: 'Kheer', price: 45, description: 'Rice pudding with nuts', image: '🍮' },
-      { id: 'd4', name: 'Jalebi', price: 35, description: 'Crispy spirals in sugar syrup', image: '🍯' }
-    ],
-    healthy: [
-      { id: 'h1', name: 'Fruit Salad', price: 70, description: 'Fresh seasonal fruits', image: '🥗' },
-      { id: 'h2', name: 'Green Salad', price: 60, description: 'Mixed vegetables with dressing', image: '🥗' },
-      { id: 'h3', name: 'Sprouts Chaat', price: 50, description: 'Protein-rich sprouts salad', image: '🌱' },
-      { id: 'h4', name: 'Grilled Chicken', price: 150, description: 'Healthy grilled chicken breast', image: '🍗' }
-    ]
-  };
+  // Menu data will be fetched from canteen API
+  const [menuData, setMenuData] = useState<any>({});
   
-  // Use real user data if available, fallback to sample data
+  // Use real user data if available
   const profile: StudentProfile = user ? {
     id: user.id?.toString() || '1',
     fullName: user.full_name || 'Unknown User',
@@ -186,11 +105,19 @@ const [activeTab, setActiveTab] = useState<'overview' | 'networking' | 'events' 
     skills: [], // These would come from user preferences/skills table
     interests: [], // These would come from user interests table
     avatarUrl: '/api/placeholder/80/80'
-  } : sampleProfile;
+  } : {
+    id: '1',
+    fullName: 'Unknown User',
+    course: 'Unknown Course',
+    batch: 'Unknown Batch',
+    skills: [],
+    interests: [],
+    avatarUrl: '/api/placeholder/80/80'
+  };
   
-  const [recommendedClubs, setRecommendedClubs] = useState<RecommendedClub[]>(sampleClubs);
-  const [networkingProfiles, setNetworkingProfiles] = useState<NetworkingProfile[]>(sampleNetworking);
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>(sampleEvents);
+  const [recommendedClubs, setRecommendedClubs] = useState<RecommendedClub[]>([]);
+  const [networkingProfiles, setNetworkingProfiles] = useState<NetworkingProfile[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   
   // Fetch personalized recommendations from backend when authenticated
   React.useEffect(() => {
@@ -234,7 +161,10 @@ const [activeTab, setActiveTab] = useState<'overview' | 'networking' | 'events' 
         }
       } catch (e) {
         console.error('Error fetching recommendations:', e);
-        // keep sample data as fallback
+        // Set empty arrays if API fails
+        setRecommendedClubs([]);
+        setNetworkingProfiles([]);
+        setUpcomingEvents([]);
       }
     };
     if (isAuthenticated) fetchRecommendations();

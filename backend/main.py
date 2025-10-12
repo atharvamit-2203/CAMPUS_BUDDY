@@ -30,10 +30,10 @@ uvicorn_logger.setLevel(logging.INFO)
 # Add the current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException, Depends, status, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, status, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
-import time
+import time as time_module
 import mysql.connector
 from mysql.connector import Error
 
@@ -70,12 +70,48 @@ from clubs_api import (
     get_my_club_stats, create_recruitment_post, search_clubs, get_club_categories
 )
 
+# Import club events API
+from club_events_api import (
+    create_club_event, get_club_events, get_all_club_events, approve_club_event,
+    create_club_timeline, get_club_timeline, register_for_event,
+    get_student_council_dashboard, mark_student_council
+)
+
+# Import admin user management
+from admin_user_management import (
+    add_student_manual, add_teacher_manual, bulk_upload_students_csv,
+    bulk_upload_teachers_csv, get_import_logs, get_user_statistics, search_users
+)
+
+# Import club events calendar
+from club_events_calendar import (
+    create_club_event_calendar, get_club_calendar, get_all_clubs_calendar,
+    subscribe_to_club_calendar, get_club_calendar_subscriptions,
+    update_club_calendar_settings, get_upcoming_events_all_clubs
+)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Campus Connect API",
     description="Campus networking and collaboration platform with MySQL backend",
     version="2.0.0"
 )
+
+# Include routers first (before individual routes to avoid conflicts)
+# Notifications router
+try:
+    app.include_router(notifications_router)
+    logger.info("✅ Notifications router included")
+except Exception as e:
+    logger.error(f"❌ Failed to include notifications router: {e}")
+
+# Communications (club notifications) and room booking router
+try:
+    from club_notifications_and_rooms import router as comms_router
+    app.include_router(comms_router)
+    logger.info("✅ Communications router included")
+except Exception as e:
+    logger.error(f"❌ Failed to include communications router: {e}")
 
 # Configure CORS
 app.add_middleware(
@@ -89,7 +125,7 @@ app.add_middleware(
 # Request logging middleware - added after CORS middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    start_time = time.time()
+    start_time = time_module.time()
     method = request.method
     url = request.url.path
     
@@ -104,7 +140,7 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     
     # Calculate processing time
-    process_time = time.time() - start_time
+    process_time = time_module.time() - start_time
     
     # Log the request details with high visibility
     print("\n" + "*"*50, flush=True)
@@ -570,20 +606,7 @@ try:
 except Exception:
     pass
 
-# Communications (club notifications) and room booking router
-try:
-    from club_notifications_and_rooms import router as comms_router
-    app.include_router(comms_router)
-except Exception:
-    # This router is optional; continue even if import fails
-    pass
-
-# Notifications router
-try:
-    app.include_router(notifications_router)
-except Exception:
-    # This router is optional; continue even if import fails
-    pass
+# Routers have been moved to the top after app creation
 
 # Configure CORS
 app.add_middleware(
@@ -598,7 +621,7 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     try:
-        start_time = time.time()
+        start_time = time_module.time()
         
         # Log the incoming request
         print(f"🚀 {request.method} {request.url.path}", flush=True)
@@ -607,7 +630,7 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
         
         # Log the response
-        process_time = time.time() - start_time
+        process_time = time_module.time() - start_time
         status_emoji = "✅" if response.status_code < 400 else "❌"
         print(f"{status_emoji} {request.method} {request.url.path} - {response.status_code} - {process_time:.2f}s", flush=True)
         
@@ -899,7 +922,7 @@ async def register_user(user: schemas.UserRegister, db = Depends(get_db)):
         
         cursor.execute(insert_query, (
             user.username, user.email, hashed_password, user.full_name,
-            user.role, user.college_id, user.student_id, user.course,
+            user.role.value, user.college_id, user.student_id, user.course,
             user.branch, user.semester, user.academic_year, user.batch,
             user.employee_id, user.designation, user.specialization,
             user.organization_type, user.department, user.bio,
@@ -1463,19 +1486,33 @@ async def my_org_members_alias(
         club_ids = [club["id"] for club in managed_clubs]
         placeholders = ",".join(["%s"] * len(club_ids))
         
-        # Filter by status if provided
+        # Filter by status if provided  
         status_filter = ""
         params = list(club_ids)
         if status:
-            status_filter = " AND cm.status IN (%s)" % ",".join(["%s"] * len(status.split(",")))
-            params.extend(status.split(","))
+            # Map frontend status names to backend status names
+            status_list = []
+            for s in status.split(","):
+                s = s.strip()
+                if s in ["active", "member"]:
+                    status_list.append("approved")
+                elif s == "pending":
+                    status_list.append("pending")
+                elif s == "rejected":
+                    status_list.append("rejected")
+                else:
+                    status_list.append(s)  # Use as-is for other statuses
+            
+            status_filter = " AND cm.status IN (%s)" % ",".join(["%s"] * len(status_list))
+            params.extend(status_list)
         
         # Get all applications from both tables
         applications = []
         
         # From club_memberships table
         query = f"""
-            SELECT cm.*, u.full_name, u.email, u.course, u.semester, u.phone_number, u.id as user_id,
+            SELECT cm.id as application_id, cm.club_id, cm.status, cm.joined_at, cm.application_message,
+                   u.id, u.full_name, u.email, u.course, u.semester, u.phone_number,
                    c.name as club_name, 'club_membership' as application_type
             FROM club_memberships cm
             JOIN users u ON cm.user_id = u.id
@@ -1687,7 +1724,7 @@ async def search_clubs_endpoint(
     current_user = Depends(auth.get_current_user)
 ):
     """Search and filter clubs"""
-    return await search_clubs(query, category, current_user)
+    return await search_clubs(current_user, query, category)
 
 @app.get("/clubs/categories")
 async def get_club_categories_endpoint():
@@ -4508,99 +4545,99 @@ async def create_notification(notification_data: schemas.NotificationCreate, cur
         if 'connection' in locals():
             connection.close()
 
-@app.get("/notifications")
-async def get_notifications(current_user = Depends(auth.get_current_user), db = Depends(get_db)):
-    """Get notifications for current user"""
-    try:
-        connection = get_mysql_connection()
-        cursor = connection.cursor(dictionary=True)
-        
-        cursor.execute(
-            """
-            SELECT n.*, u.full_name as created_by_name,
-                   ur.read_at, ur.is_read
-            FROM notifications n
-            JOIN users u ON n.created_by = u.id
-            LEFT JOIN user_notification_reads ur ON n.id = ur.notification_id 
-                AND ur.user_id = %s
-            WHERE n.target_role IN ('all', %s)
-              AND (n.expires_at IS NULL OR n.expires_at >= NOW())
-            ORDER BY n.priority DESC, n.created_at DESC
-            """,
-            (current_user["id"], current_user["role"])
-        )
-        notifications = cursor.fetchall()
-        
-        return notifications
-    except mysql.connector.Error as e:
-        return {"notifications": [], "error": str(e)}
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'connection' in locals():
-            connection.close()
+# @app.get("/notifications") - COMMENTED OUT - Using router-based endpoint instead
+# async def get_notifications(current_user = Depends(auth.get_current_user), db = Depends(get_db)):
+#     """Get notifications for current user"""
+#     try:
+#         connection = get_mysql_connection()
+#         cursor = connection.cursor(dictionary=True)
+#         
+#         cursor.execute(
+#             """
+#             SELECT n.*, u.full_name as created_by_name,
+#                    ur.read_at, ur.is_read
+#             FROM notifications n
+#             JOIN users u ON n.created_by = u.id
+#             LEFT JOIN user_notification_reads ur ON n.id = ur.notification_id 
+#                 AND ur.user_id = %s
+#             WHERE n.target_role IN ('all', %s)
+#               AND (n.expires_at IS NULL OR n.expires_at >= NOW())
+#             ORDER BY n.priority DESC, n.created_at DESC
+#             """,
+#             (current_user["id"], current_user["role"])
+#         )
+#         notifications = cursor.fetchall()
+#         
+#         return notifications
+#     except mysql.connector.Error as e:
+#         return {"notifications": [], "error": str(e)}
+#     finally:
+#         if 'cursor' in locals():
+#             cursor.close()
+#         if 'connection' in locals():
+#             connection.close()
 
-@app.post("/notifications/{notification_id}/read")
-async def mark_notification_read_endpoint(notification_id: int, current_user = Depends(auth.get_current_user)):
-    """Mark notification as read"""
-    try:
-        connection = get_mysql_connection()
-        cursor = connection.cursor(dictionary=True)
-        
-        # Check if already marked as read
-        cursor.execute(
-            "SELECT * FROM user_notification_reads WHERE notification_id = %s AND user_id = %s",
-            (notification_id, current_user["id"])
-        )
-        existing = cursor.fetchone()
-        
-        if existing:
-            return {"message": "Notification already marked as read"}
-        
-        # Mark as read
-        cursor.execute(
-            """
-            INSERT INTO user_notification_reads (notification_id, user_id, read_at, is_read)
-            VALUES (%s, %s, NOW(), 1)
-            """,
-            (notification_id, current_user["id"])
-        )
-        connection.commit()
+# @app.post("/notifications/{notification_id}/read") - COMMENTED OUT - Using router-based endpoint instead
+# async def mark_notification_read_endpoint(notification_id: int, current_user = Depends(auth.get_current_user)):
+#     """Mark notification as read"""
+#     try:
+#         connection = get_mysql_connection()
+#         cursor = connection.cursor(dictionary=True)
+#         
+#         # Check if already marked as read
+#         cursor.execute(
+#             "SELECT * FROM user_notification_reads WHERE notification_id = %s AND user_id = %s",
+#             (notification_id, current_user["id"])
+#         )
+#         existing = cursor.fetchone()
+#         
+#         if existing:
+#             return {"message": "Notification already marked as read"}
+#         
+#         # Mark as read
+#         cursor.execute(
+#             """
+#             INSERT INTO user_notification_reads (notification_id, user_id, read_at, is_read)
+#             VALUES (%s, %s, NOW(), 1)
+#             """,
+#             (notification_id, current_user["id"])
+#         )
+#         connection.commit()
 
-        return {"message": "Notification marked as read"}
-    except mysql.connector.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'connection' in locals():
-            connection.close()
+#         return {"message": "Notification marked as read"}
+#     except mysql.connector.Error as e:
+#         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+#     finally:
+#         if 'cursor' in locals():
+#             cursor.close()
+#         if 'connection' in locals():
+#             connection.close()
 
-@app.get("/notifications/unread-count")
-async def get_unread_notification_count(current_user = Depends(auth.get_current_user), db = Depends(get_db)):
-    """Get unread notification count"""
-    try:
-        connection = get_mysql_connection()
-        cursor = connection.cursor(dictionary=True)
+# @app.get("/notifications/unread-count") - COMMENTED OUT - Using router-based endpoint instead
+# async def get_unread_notification_count(current_user = Depends(auth.get_current_user), db = Depends(get_db)):
+#     """Get unread notification count"""
+#     try:
+#         connection = get_mysql_connection()
+#         cursor = connection.cursor(dictionary=True)
 
-        cursor.execute(
-            """
-            SELECT COUNT(*) as unread_count
-            FROM notifications
-            WHERE user_id = %s AND is_read = 0
-            """,
-            (current_user["id"],)
-        )
-        result = cursor.fetchone()
+#         cursor.execute(
+#             """
+#             SELECT COUNT(*) as unread_count
+#             FROM notifications
+#             WHERE user_id = %s AND is_read = 0
+#             """,
+#             (current_user["id"],)
+#         )
+#         result = cursor.fetchone()
 
-        return {"unread_count": result["unread_count"]}
-    except mysql.connector.Error as e:
-        return {"unread_count": 0}
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'connection' in locals():
-            connection.close()
+#         return {"unread_count": result["unread_count"]}
+#     except mysql.connector.Error as e:
+#         return {"unread_count": 0}
+#     finally:
+#         if 'cursor' in locals():
+#             cursor.close()
+#         if 'connection' in locals():
+#             connection.close()
 
 @app.post("/notifications/{notification_id}/delete")
 async def delete_notification(notification_id: int, current_user = Depends(auth.get_current_user), db = Depends(get_db)):
@@ -5038,7 +5075,7 @@ async def get_organization_application_details(org_id: int, user_id: int, curren
         # Look for application in both tables
         application = None
         
-        # First check club_memberships
+        # First check club_memberships (basic application)
         cursor.execute(
             """
             SELECT cm.*, u.full_name, u.email, u.course, u.semester, u.phone_number,
@@ -5051,25 +5088,53 @@ async def get_organization_application_details(org_id: int, user_id: int, curren
         )
         application = cursor.fetchone()
         
-        # If not found, check organization_applications
-        if not application:
-            cursor.execute(
-                """
-                SELECT oa.*, 
-                       oa.full_name,  -- Use application form name
-                       u.email, 
-                       oa.batch as course,  -- Use application batch as course
-                       oa.year_of_study as semester,  -- Use application year as semester
-                       u.phone_number,
-                       'organization_application' as application_type,
-                       oa.created_at as joined_at
-                FROM organization_applications oa
-                JOIN users u ON oa.user_id = u.id
-                WHERE oa.club_id = %s AND oa.user_id = %s
-                """,
-                (org_id, user_id)
-            )
-            application = cursor.fetchone()
+        # Check organization_applications for detailed form responses (priority over basic membership)
+        cursor.execute(
+            """
+            SELECT oa.*, 
+                   oa.full_name as application_full_name,  -- Form response name
+                   u.email, 
+                   u.full_name as user_full_name,  -- User profile name
+                   oa.batch as course,  -- Use application batch as course
+                   oa.year_of_study as semester,  -- Use application year as semester
+                   u.phone_number,
+                   'organization_application' as application_type,
+                   oa.created_at as joined_at
+            FROM organization_applications oa
+            JOIN users u ON oa.user_id = u.id
+            WHERE oa.club_id = %s AND oa.user_id = %s
+            """,
+            (org_id, user_id)
+        )
+        detailed_application = cursor.fetchone()
+        
+        # If we have detailed application form responses, use those
+        if detailed_application:
+            application = detailed_application
+            # Structure the form responses for frontend display
+            form_responses = {
+                "personal_info": {
+                    "full_name": detailed_application.get('application_full_name'),
+                    "batch": detailed_application.get('batch'),
+                    "year_of_study": detailed_application.get('year_of_study'),
+                    "sap_id": detailed_application.get('sap_id'),
+                },
+                "organization_preferences": {
+                    "department_to_join": detailed_application.get('department_to_join'),
+                },
+                "application_questions": {
+                    "why_join": detailed_application.get('why_join'),
+                    "what_contribute": detailed_application.get('what_contribute'),
+                    "can_stay_longer_hours": detailed_application.get('can_stay_longer_hours', False)
+                },
+                "status_info": {
+                    "status": detailed_application.get('status', 'pending'),
+                    "applied_at": detailed_application.get('created_at'),
+                    "reviewed_at": detailed_application.get('reviewed_at'),
+                    "reviewed_by": detailed_application.get('reviewed_by')
+                }
+            }
+            application['form_responses'] = form_responses
         
         if not application:
             raise HTTPException(status_code=404, detail="Application not found")
@@ -6022,9 +6087,8 @@ async def get_system_stats(current_user = Depends(auth.get_current_user)):
         cursor.execute("SELECT COUNT(*) as total_users FROM users")
         total_users = cursor.fetchone()["total_users"]
         
-        # Total colleges count
-        cursor.execute("SELECT COUNT(DISTINCT college_name) as total_colleges FROM users WHERE college_name IS NOT NULL")
-        total_colleges = cursor.fetchone()["total_colleges"]
+        # Total colleges count (single college system)
+        total_colleges = 1
         
         # Active events count (events in future)
         cursor.execute("SELECT COUNT(*) as active_events FROM events WHERE date >= CURDATE()")
@@ -6062,10 +6126,11 @@ async def get_all_users(current_user = Depends(auth.get_current_user)):
                 full_name,
                 email,
                 role,
-                college_name,
                 department,
+                course,
+                semester,
                 created_at,
-                last_login
+                updated_at as last_login
             FROM users 
             ORDER BY created_at DESC
             LIMIT 100
@@ -6100,15 +6165,12 @@ async def get_all_colleges(current_user = Depends(auth.get_current_user)):
         cursor.execute(
             """
             SELECT 
-                college_name as name,
+                'Campus Connect College' as name,
                 COUNT(*) as total_users,
                 SUM(CASE WHEN role = 'student' THEN 1 ELSE 0 END) as students_count,
                 SUM(CASE WHEN role = 'faculty' THEN 1 ELSE 0 END) as faculty_count,
                 MIN(created_at) as created_at
-            FROM users 
-            WHERE college_name IS NOT NULL
-            GROUP BY college_name
-            ORDER BY total_users DESC
+            FROM users
             """
         )
         colleges = cursor.fetchall()
@@ -6173,20 +6235,19 @@ async def get_admin_timetables(current_user = Depends(auth.get_current_user)):
                 t.faculty_name as faculty,
                 t.room,
                 t.batch,
-                t.semester,
-                u.college_name as college_name
+                t.semester
             FROM timetable_entries t
             JOIN users u ON t.user_id = u.id
             WHERE t.user_type = 'faculty'
-            ORDER BY u.college_name, t.day, t.start_time
+            ORDER BY t.day, t.start_time
             LIMIT 50
             """
         )
         timetables = cursor.fetchall()
         
-        # Add college_id for frontend compatibility
+        # Add college_id for frontend compatibility  
         for entry in timetables:
-            entry["college_id"] = "1"  # Mock college ID
+            entry["college_id"] = "1"  # Single college system
             entry["id"] = str(entry["id"])
         
         return timetables
@@ -6195,6 +6256,172 @@ async def get_admin_timetables(current_user = Depends(auth.get_current_user)):
     finally:
         if 'cursor' in locals(): cursor.close()
         if 'connection' in locals(): connection.close()
+
+
+# ============================================================================
+# CLUB EVENTS AND TIMELINE ENDPOINTS
+# ============================================================================
+
+@app.post("/clubs/{club_id}/events")
+async def create_club_event_endpoint(club_id: int, event_data: dict, current_user = Depends(auth.get_current_user)):
+    """Create a new event for a club"""
+    return await create_club_event(club_id, event_data, current_user)
+
+@app.get("/clubs/{club_id}/events")
+async def get_club_events_endpoint(
+    club_id: int,
+    status: Optional[str] = Query(None, description="Filter by status: draft, pending_approval, approved, rejected, cancelled, completed"),
+    current_user = Depends(auth.get_current_user)
+):
+    """Get all events for a specific club"""
+    return await get_club_events(club_id, status, current_user)
+
+@app.get("/clubs/events/all")
+async def get_all_club_events_endpoint(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    from_date: Optional[str] = Query(None, description="Filter events from this date (YYYY-MM-DD)"),
+    current_user = Depends(auth.get_current_user)
+):
+    """Get all club events across all clubs (for calendar view)"""
+    return await get_all_club_events(status, from_date, current_user)
+
+@app.post("/clubs/events/{event_id}/approve")
+async def approve_club_event_endpoint(event_id: int, approval_data: dict, current_user = Depends(auth.get_current_user)):
+    """Approve or reject a club event (Student Council only)"""
+    return await approve_club_event(event_id, approval_data, current_user)
+
+@app.post("/clubs/{club_id}/timeline")
+async def create_club_timeline_endpoint(club_id: int, timeline_data: dict, current_user = Depends(auth.get_current_user)):
+    """Create a recurring activity in club timeline"""
+    return await create_club_timeline(club_id, timeline_data, current_user)
+
+@app.get("/clubs/{club_id}/timeline")
+async def get_club_timeline_endpoint(club_id: int, current_user = Depends(auth.get_current_user)):
+    """Get recurring timeline for a club"""
+    return await get_club_timeline(club_id, current_user)
+
+@app.post("/clubs/events/{event_id}/register")
+async def register_for_event_endpoint(event_id: int, current_user = Depends(auth.get_current_user)):
+    """Register for a club event"""
+    return await register_for_event(event_id, current_user)
+
+@app.get("/student-council/dashboard")
+async def get_student_council_dashboard_endpoint(current_user = Depends(auth.get_current_user)):
+    """Get Student Council dashboard with all club events overview"""
+    return await get_student_council_dashboard(current_user)
+
+@app.post("/admin/clubs/{club_id}/mark-student-council")
+async def mark_student_council_endpoint(club_id: int, current_user = Depends(auth.get_current_user)):
+    """Mark a club as Student Council (Admin only)"""
+    return await mark_student_council(club_id, current_user)
+
+# ============================================================================
+# ADMIN USER MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.post("/admin/students/add")
+async def add_student_endpoint(student_data: dict, current_user = Depends(auth.get_current_user)):
+    """Add a new student manually (Admin only)"""
+    return await add_student_manual(student_data, current_user)
+
+@app.post("/admin/teachers/add")
+async def add_teacher_endpoint(teacher_data: dict, current_user = Depends(auth.get_current_user)):
+    """Add a new teacher manually (Admin only)"""
+    return await add_teacher_manual(teacher_data, current_user)
+
+@app.post("/admin/students/upload-csv")
+async def upload_students_csv_endpoint(file: UploadFile = File(...), current_user = Depends(auth.get_current_user)):
+    """Bulk upload students from CSV file (Admin only)"""
+    return await bulk_upload_students_csv(file, current_user)
+
+@app.post("/admin/teachers/upload-csv")
+async def upload_teachers_csv_endpoint(file: UploadFile = File(...), current_user = Depends(auth.get_current_user)):
+    """Bulk upload teachers from CSV file (Admin only)"""
+    return await bulk_upload_teachers_csv(file, current_user)
+
+@app.get("/admin/import-logs")
+async def get_import_logs_endpoint(limit: int = 50, current_user = Depends(auth.get_current_user)):
+    """Get import history logs (Admin only)"""
+    return await get_import_logs(current_user, limit)
+
+@app.get("/admin/user-statistics")
+async def get_user_statistics_endpoint(current_user = Depends(auth.get_current_user)):
+    """Get user statistics for admin dashboard (Admin only)"""
+    return await get_user_statistics(current_user)
+
+@app.get("/admin/users/search")
+async def search_users_endpoint(
+    query: str = "", 
+    role: str = "", 
+    limit: int = 50, 
+    current_user = Depends(auth.get_current_user)
+):
+    """Search users with filters (Admin only)"""
+    return await search_users(current_user, query, role, limit)
+
+# ============================================================================
+# CLUB EVENTS CALENDAR ENDPOINTS
+# ============================================================================
+
+@app.post("/clubs/{club_id}/calendar/events")
+async def create_club_calendar_event_endpoint(club_id: int, event_data: dict, current_user = Depends(auth.get_current_user)):
+    """Create a club event with calendar integration"""
+    return await create_club_event_calendar(club_id, event_data, current_user)
+
+@app.get("/clubs/{club_id}/calendar/{year}/{month}")
+async def get_club_calendar_endpoint(club_id: int, year: int, month: int, current_user = Depends(auth.get_current_user)):
+    """Get club calendar for a specific month"""
+    return await get_club_calendar(club_id, year, month, current_user)
+
+@app.get("/calendar/{year}/{month}")
+async def get_all_clubs_calendar_endpoint(
+    year: int, 
+    month: int, 
+    club_ids: Optional[str] = Query(None, description="Comma-separated club IDs to filter"),
+    current_user = Depends(auth.get_current_user)
+):
+    """Get calendar view for all clubs or specific clubs for a month"""
+    club_filter = None
+    if club_ids:
+        try:
+            club_filter = [int(x.strip()) for x in club_ids.split(",")]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid club IDs format")
+    
+    return await get_all_clubs_calendar(year, month, current_user, club_filter)
+
+@app.post("/clubs/{subscriber_club_id}/calendar/subscribe/{target_club_id}")
+async def subscribe_to_club_calendar_endpoint(
+    subscriber_club_id: int, 
+    target_club_id: int, 
+    current_user = Depends(auth.get_current_user)
+):
+    """Subscribe one club to another club's calendar"""
+    return await subscribe_to_club_calendar(subscriber_club_id, target_club_id, current_user)
+
+@app.get("/clubs/{club_id}/calendar/subscriptions")
+async def get_club_calendar_subscriptions_endpoint(club_id: int, current_user = Depends(auth.get_current_user)):
+    """Get all calendar subscriptions for a club"""
+    return await get_club_calendar_subscriptions(club_id, current_user)
+
+@app.put("/clubs/{club_id}/calendar/settings")
+async def update_club_calendar_settings_endpoint(
+    club_id: int, 
+    settings: dict, 
+    current_user = Depends(auth.get_current_user)
+):
+    """Update club calendar settings"""
+    return await update_club_calendar_settings(club_id, settings, current_user)
+
+@app.get("/calendar/upcoming")
+async def get_upcoming_events_endpoint(
+    days_ahead: int = Query(7, description="Number of days to look ahead"),
+    limit: int = Query(20, description="Maximum number of events to return"),
+    current_user = Depends(auth.get_current_user)
+):
+    """Get upcoming events from all clubs the user has access to"""
+    return await get_upcoming_events_all_clubs(current_user, days_ahead, limit)
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -77,7 +77,7 @@ export interface RegisterRequest {
   password: string;
   course: string;
   semester: string; // backend expects string
-role: 'student' | 'faculty' | 'organization' | 'staff';
+role: 'student' | 'faculty' | 'organization' | 'staff' | 'admin';
 }
 
 export interface AuthResponse {

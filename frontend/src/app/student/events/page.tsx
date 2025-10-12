@@ -182,12 +182,27 @@ const EventDiscoveryPage = () => {
   ];
 
   const filteredEvents = events.filter(event => {
+    // Filter out past events
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    
+    let eventDate;
+    try {
+      eventDate = new Date(event.date);
+      eventDate.setHours(0, 0, 0, 0);
+    } catch (error) {
+      console.error('Error parsing event date:', event.date, error);
+      return false; // Exclude events with invalid dates
+    }
+    
+    const isUpcoming = eventDate >= currentDate;
     const matchesCategory = selectedCategory === 'all' || event.category === selectedCategory;
     const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          event.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          event.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
                          event.organizer.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    
+    return isUpcoming && matchesCategory && matchesSearch;
   }).sort((a, b) => {
     switch (sortBy) {
       case 'date':
@@ -230,19 +245,6 @@ const EventDiscoveryPage = () => {
 
   const isRegistered = (eventId: string) => {
     return registeredEvents.some(reg => reg.eventId === eventId);
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'academic': return GraduationCap;
-      case 'cultural': return Music;
-      case 'sports': return Gamepad2;
-      case 'workshop': return Book;
-      case 'career': return Briefcase;
-      case 'competition': return Award;
-      case 'social': return Coffee;
-      default: return Globe;
-    }
   };
 
   const getCategoryColor = (category: string) => {

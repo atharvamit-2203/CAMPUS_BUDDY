@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import RoleBasedNavigation from '@/components/RoleBasedNavigation';
 import { 
   TrendingUp, 
   Users, 
-  Building,
   BarChart3,
   Shield,
   Database,
@@ -24,13 +23,13 @@ import {
   Plus,
   Save,
   Upload as UploadIcon,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Calendar
 } from 'lucide-react';
 
 // Admin-specific interfaces
 interface SystemStats {
   totalUsers: number;
-  totalColleges: number;
   activeEvents: number;
   systemUptime: string;
   storageUsed: number;
@@ -41,21 +40,12 @@ interface UserSummary {
   id: number;
   full_name: string;
   email: string;
-  role: 'student' | 'faculty' | 'organization';
-  college_name: string;
+  role: 'student' | 'faculty' | 'organization' | 'admin' | 'staff';
+  department: string;
+  course?: string;
+  semester?: number;
   status: 'active' | 'inactive' | 'suspended';
   last_login: string;
-  created_at: string;
-}
-
-interface College {
-  id: string;
-  name: string;
-  city: string;
-  state: string;
-  students_count: number;
-  faculty_count: number;
-  status: 'active' | 'inactive';
   created_at: string;
 }
 
@@ -70,7 +60,6 @@ interface SystemAlert {
 interface TimetableEntry {
   id: string;
   college_id: string;
-  college_name: string;
   day: string;
   time: string;
   subject: string;
@@ -81,6 +70,9 @@ interface TimetableEntry {
 }
 
 import { canteenAPI } from '@/services/api';
+import AdminUserManagement from '@/components/AdminUserManagement';
+import ClubCalendar from '@/components/ClubCalendar';
+import TimeParsingTest from '@/components/TimeParsingTest';
 
 const AdminDashboard = () => {
   const { user, isAuthenticated, isLoading, setIntendedRoute } = useAuth();
@@ -100,15 +92,13 @@ const AdminDashboard = () => {
       setIntendedRoute('/dashboard/admin');
       router.replace(`/dashboard/${user.role}`);
     }
-  }, [isAuthenticated, isLoading, router, setIntendedRoute, user]);
+  }, [isAuthenticated, isLoading, router, user, setIntendedRoute]);
 
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [users, setUsers] = useState<UserSummary[]>([]);
-  const [colleges, setColleges] = useState<College[]>([]);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [timetables, setTimetables] = useState<TimetableEntry[]>([]);
   const [editingTimetable, setEditingTimetable] = useState(false);
-  const [selectedCollege, setSelectedCollege] = useState<string>('all');
 
   // Canteen admin state
   const [latestAsset, setLatestAsset] = useState<any>(null);
@@ -117,7 +107,7 @@ const AdminDashboard = () => {
   const [promoteUserId, setPromoteUserId] = useState<string>('');
   const [orders, setOrders] = useState<any[]>([]);
 
-  const loadCanteen = async () => {
+  const loadCanteen = useCallback(async () => {
     try {
       const [assetRes, staffRes, ordersRes] = await Promise.all([
         canteenAPI.getLatestMenuAsset().catch(()=>({ asset: null })),
@@ -128,7 +118,7 @@ const AdminDashboard = () => {
       setStaff(Array.isArray(staffRes) ? staffRes : []);
       setOrders(Array.isArray(ordersRes) ? ordersRes : []);
     } catch {}
-  };
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -157,17 +147,6 @@ const AdminDashboard = () => {
             }
           } catch (e) {
             console.error('Error fetching users:', e);
-          }
-
-          // Fetch colleges
-          try {
-            const collegesResponse = await fetch(`${API}/admin/colleges`, { headers });
-            const collegesData = await collegesResponse.json();
-            if (Array.isArray(collegesData)) {
-              setColleges(collegesData);
-            }
-          } catch (e) {
-            console.error('Error fetching colleges:', e);
           }
 
           // Fetch alerts
@@ -201,7 +180,7 @@ const AdminDashboard = () => {
       // also load canteen admin data (staff, menu asset, orders)
       loadCanteen();
     }
-  }, [user]);
+  }, [user, loadCanteen]);
 
   const handleUserStatusChange = (userId: number, newStatus: UserSummary['status']) => {
     setUsers(users.map(user =>
@@ -244,23 +223,13 @@ const AdminDashboard = () => {
       </div>
 
       {/* System Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-black/40 border border-white/10 rounded-xl p-4">
           <div className="flex items-center space-x-3">
             <Users className="w-8 h-8 text-blue-400" />
             <div>
               <div className="text-xl font-bold text-white">{systemStats?.totalUsers.toLocaleString()}</div>
               <div className="text-sm text-gray-400">Total Users</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center space-x-3">
-            <Building className="w-8 h-8 text-green-400" />
-            <div>
-              <div className="text-xl font-bold text-white">{systemStats?.totalColleges}</div>
-              <div className="text-sm text-gray-400">Colleges</div>
             </div>
           </div>
         </div>
@@ -338,7 +307,7 @@ const AdminDashboard = () => {
             <div key={user.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
               <div>
                 <div className="text-white font-medium">{user.full_name}</div>
-                <div className="text-gray-400 text-sm">{user.email} • {user.college_name}</div>
+                <div className="text-gray-400 text-sm">{user.email} {user.department && `• ${user.department}`}</div>
                 <div className="text-gray-400 text-sm">Last login: {user.last_login}</div>
               </div>
               
@@ -366,163 +335,13 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const renderUsers = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-white">User Management</h2>
-        <div className="flex space-x-2">
-          <button className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors">
-            <Search className="w-4 h-4" />
-            <span>Search</span>
-          </button>
-          <button className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors">
-            <Filter className="w-4 h-4" />
-            <span>Filter</span>
-          </button>
-          <button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-            <UserPlus className="w-4 h-4" />
-            <span>Add User</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-black/40 border border-white/10 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-white/5">
-              <tr>
-                <th className="text-left p-4 text-gray-300">User</th>
-                <th className="text-left p-4 text-gray-300">Role</th>
-                <th className="text-left p-4 text-gray-300">College</th>
-                <th className="text-left p-4 text-gray-300">Status</th>
-                <th className="text-left p-4 text-gray-300">Last Login</th>
-                <th className="text-left p-4 text-gray-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-t border-white/10 hover:bg-white/5">
-                  <td className="p-4">
-                    <div>
-                      <div className="text-white font-medium">{user.full_name}</div>
-                      <div className="text-gray-400 text-sm">{user.email}</div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      user.role === 'student' ? 'bg-blue-600/20 text-blue-400' :
-                      user.role === 'faculty' ? 'bg-purple-600/20 text-purple-400' :
-                      'bg-green-600/20 text-green-400'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="p-4 text-gray-400">{user.college_name}</td>
-                  <td className="p-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      user.status === 'active' ? 'bg-green-600/20 text-green-400' :
-                      user.status === 'inactive' ? 'bg-gray-600/20 text-gray-400' :
-                      'bg-red-600/20 text-red-400'
-                    }`}>
-                      {user.status}
-                    </span>
-                  </td>
-                  <td className="p-4 text-gray-400">{user.last_login}</td>
-                  <td className="p-4">
-                    <div className="flex space-x-2">
-                      <button 
-                        className="text-blue-400 hover:text-blue-300 transition-colors"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleUserStatusChange(user.id, user.status === 'active' ? 'suspended' : 'active')}
-                        className={`transition-colors ${
-                          user.status === 'active' 
-                            ? 'text-red-400 hover:text-red-300' 
-                            : 'text-green-400 hover:text-green-300'
-                        }`}
-                        title={user.status === 'active' ? 'Suspend' : 'Activate'}
-                      >
-                        <Shield className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderColleges = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-white">College Management</h2>
-        <button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-          <Building className="w-4 h-4" />
-          <span>Add College</span>
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {colleges.map((college) => (
-          <div key={college.id} className="bg-black/40 border border-white/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold text-lg">{college.name}</h3>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                college.status === 'active' ? 'bg-green-600/20 text-green-400' : 'bg-gray-600/20 text-gray-400'
-              }`}>
-                {college.status}
-              </span>
-            </div>
-
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Location:</span>
-                <span className="text-white">{college.city}, {college.state}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Students:</span>
-                <span className="text-white">{college.students_count.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Faculty:</span>
-                <span className="text-white">{college.faculty_count}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Established:</span>
-                <span className="text-white">{college.created_at}</span>
-              </div>
-            </div>
-
-            <div className="flex space-x-2">
-              <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors text-sm">
-                View Details
-              </button>
-              <button className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors text-sm">
-                Edit
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  // Commented out as it's replaced by AdminUserManagement component
+  // const renderUsers = () => (
+  //   ... original renderUsers code ...
+  // );
 
   const renderTimetables = () => {
-    const filteredTimetables = timetables.filter(entry => selectedCollege === 'all' || entry.college_id === selectedCollege);
-    const totalEntries = filteredTimetables.length;
-    const uniqueColleges = [...new Set(timetables.map(t => t.college_name))].length;
+    const totalEntries = timetables.length;
     const uniqueFaculty = [...new Set(timetables.map(t => t.faculty))].length;
     const uniqueRooms = [...new Set(timetables.map(t => t.room))].length;
 
@@ -531,17 +350,6 @@ const AdminDashboard = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-white">Institution Timetable Management</h2>
         <div className="flex space-x-2">
-          <select 
-            value={selectedCollege}
-            onChange={(e) => setSelectedCollege(e.target.value)}
-            className="bg-black/40 text-white border border-white/20 rounded px-3 py-2"
-            title="Select college to filter timetables"
-          >
-            <option value="all">All Colleges</option>
-            {colleges.map((college) => (
-              <option key={college.id} value={college.id}>{college.name}</option>
-            ))}
-          </select>
           <button 
             onClick={() => setEditingTimetable(!editingTimetable)}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
@@ -573,15 +381,6 @@ const AdminDashboard = () => {
         </div>
         <div className="bg-black/40 border border-white/10 rounded-xl p-4">
           <div className="flex items-center space-x-3">
-            <Building className="w-8 h-8 text-green-400" />
-            <div>
-              <div className="text-xl font-bold text-white">{uniqueColleges}</div>
-              <div className="text-sm text-gray-400">Colleges Managed</div>
-            </div>
-          </div>
-        </div>
-        <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center space-x-3">
             <Users className="w-8 h-8 text-purple-400" />
             <div>
               <div className="text-xl font-bold text-white">{uniqueFaculty}</div>
@@ -604,13 +403,13 @@ const AdminDashboard = () => {
       <div className="bg-black/40 border border-white/10 rounded-xl p-6">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center">
           <Clock className="w-6 h-6 mr-2 text-blue-400" />
-          Global Timetable Management
+          Institution Timetable Management
         </h3>
         
         {editingTimetable && (
           <div className="mb-4 p-4 bg-orange-600/20 border border-orange-500/30 rounded-lg">
             <p className="text-orange-300 text-sm">
-              <strong>⚠️ Administrative Editing Mode:</strong> You are modifying institutional schedules across multiple colleges. Changes will directly impact academic operations and should be coordinated with respective college authorities.
+              <strong>⚠️ Administrative Editing Mode:</strong> You are modifying institutional schedules. Changes will directly impact academic operations.
             </p>
           </div>
         )}
@@ -618,7 +417,7 @@ const AdminDashboard = () => {
         {!editingTimetable && totalEntries > 0 && (
           <div className="mb-4 p-4 bg-green-600/20 border border-green-500/30 rounded-lg">
             <p className="text-green-300 text-sm">
-              <strong>Viewing Mode:</strong> Currently displaying {totalEntries} schedule entries{selectedCollege !== 'all' ? ` for ${colleges.find(c => c.id === selectedCollege)?.name || 'selected college'}` : ' across all colleges'}. Use Administrative Edit to make changes.
+              <strong>Viewing Mode:</strong> Currently displaying {totalEntries} schedule entries. Use Administrative Edit to make changes.
             </p>
           </div>
         )}
@@ -627,7 +426,6 @@ const AdminDashboard = () => {
           <table className="w-full">
             <thead className="bg-white/5">
               <tr>
-                <th className="text-left p-4 text-gray-300">College</th>
                 <th className="text-left p-4 text-gray-300">Day</th>
                 <th className="text-left p-4 text-gray-300">Time</th>
                 <th className="text-left p-4 text-gray-300">Subject</th>
@@ -638,9 +436,8 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredTimetables.map((entry) => (
+              {timetables.map((entry) => (
                 <tr key={entry.id} className="border-t border-white/10 hover:bg-white/5">
-                  <td className="p-4 text-white">{entry.college_name}</td>
                   <td className="p-4 text-gray-400">{entry.day}</td>
                   <td className="p-4 text-blue-400 font-medium">{entry.time}</td>
                   <td className="p-4">
@@ -722,15 +519,12 @@ const AdminDashboard = () => {
             <BarChart3 className="w-4 h-4" />
             <span>Analytics Report</span>
           </button>
-          <button className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-3 rounded-lg transition-colors flex items-center justify-center space-x-2">
-            <Database className="w-4 h-4" />
-            <span>Sync All Colleges</span>
-          </button>
+
         </div>
         
         <div className="mt-4 p-3 bg-gray-600/20 border border-gray-500/30 rounded-lg">
           <p className="text-gray-300 text-sm">
-            <strong>Note:</strong> These operations affect multiple institutions. Use with caution and ensure proper authorization.
+            <strong>Note:</strong> These operations affect the institution. Use with caution and ensure proper authorization.
           </p>
         </div>
       </div>
@@ -741,7 +535,7 @@ const AdminDashboard = () => {
   const [roles, setRoles] = useState<{id:number, code:string, name:string, description:string}[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
 
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     try {
       setLoadingRoles(true);
       const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -749,9 +543,9 @@ const AdminDashboard = () => {
       const data = await resp.json();
       setRoles(Array.isArray(data) ? data : []);
     } catch (e) { /* noop */ } finally { setLoadingRoles(false); }
-  };
+  }, []);
 
-  React.useEffect(()=>{ loadRoles(); }, []);
+  React.useEffect(()=>{ loadRoles(); }, [loadRoles]);
 
   const assignUser = async (role_id: number) => {
     const uid = prompt('Enter user id to assign');
@@ -918,10 +712,11 @@ const AdminDashboard = () => {
               {[
                 { id: 'overview', label: 'Overview', icon: TrendingUp },
                 { id: 'users', label: 'Users', icon: Users },
-                { id: 'colleges', label: 'Colleges', icon: Building },
                 { id: 'timetables', label: 'Timetables', icon: Clock },
                 { id: 'canteen', label: 'Canteen', icon: Database },
                 { id: 'admin-roles', label: 'Admin Roles', icon: Shield },
+                { id: 'club-calendar', label: 'Club Calendar', icon: Calendar },
+                { id: 'debug', label: 'Debug', icon: AlertTriangle },
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
@@ -945,11 +740,20 @@ const AdminDashboard = () => {
 
         {/* Content */}
         {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'users' && renderUsers()}
-        {activeTab === 'colleges' && renderColleges()}
+        {activeTab === 'users' && <AdminUserManagement />}
         {activeTab === 'timetables' && renderTimetables()}
         {activeTab === 'canteen' && renderCanteen()}
         {activeTab === 'admin-roles' && renderAdmins()}
+        {activeTab === 'club-calendar' && <ClubCalendar showAllClubs={true} />}
+        {activeTab === 'debug' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-4">Debug Tools</h2>
+              <p className="text-gray-400 mb-6">Tools to help debug and test system functionality</p>
+            </div>
+            <TimeParsingTest />
+          </div>
+        )}
       </div>
     </div>
   );

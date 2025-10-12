@@ -37,7 +37,11 @@ const RecruitmentPage = () => {
 
   const updateStatus = async (userId: number, status: string) => {
     try {
-      const resp = await fetch(`${API}/organizations/members/${userId}/status`, {
+      // Find the member record to get the actual user_id
+      const member = filtered.find(m => m.id === userId);
+      const actualUserId = member?.user_id || member?.id || userId;
+      
+      const resp = await fetch(`${API}/organizations/members/${actualUserId}/status`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -128,11 +132,8 @@ const RecruitmentPage = () => {
     setDrag({ active: false, startX: 0, startY: 0, x: 0, y: 0, rotate: 0 });
     // Let the animation play, then update backend
     setTimeout(() => {
-      // Map frontend statuses to database enum values
-      const dbStatus = status === 'selected' ? 'active' : 
-                      status === 'shortlisted' ? 'pending' : 
-                      status === 'rejected' ? 'rejected' : status;
-      updateStatus(c.id, dbStatus);
+      // Use frontend status directly - backend will handle the mapping and notifications
+      updateStatus(c.id, status);
       setAnim(null);
     }, 260);
   };
@@ -326,12 +327,80 @@ const RecruitmentPage = () => {
                   <div><span className="text-gray-400">Department:</span> {details.user?.department || '-'}</div>
                   <div><span className="text-gray-400">Phone:</span> {details.user?.phone_number || '-'}</div>
                 </div>
-                {details.user?.bio && (
+{details.user?.bio && (
                   <div>
                     <div className="text-gray-400 mb-1">Bio</div>
                     <div className="bg-white/5 border border-white/10 rounded p-3 text-sm">{details.user.bio}</div>
                   </div>
                 )}
+
+                {/* Application Form Responses */}
+                {details.application?.form_responses && (
+                  <div className="space-y-4 border-t border-white/10 pt-4">
+                    <h3 className="text-lg font-semibold text-white">Application Form Responses</h3>
+                    
+                    {/* Personal Information */}
+                    <div>
+                      <div className="text-gray-400 mb-2 font-medium">Personal Information</div>
+                      <div className="bg-white/5 border border-white/10 rounded p-3 space-y-2 text-sm">
+                        <div><span className="text-gray-400">Name:</span> <span className="text-white">{details.application.form_responses.personal_info.full_name}</span></div>
+                        <div><span className="text-gray-400">Program:</span> <span className="text-white">{details.application.form_responses.personal_info.batch}</span></div>
+                        <div><span className="text-gray-400">Year of Study:</span> <span className="text-white">{details.application.form_responses.personal_info.year_of_study}</span></div>
+                        {details.application.form_responses.personal_info.sap_id && (
+                          <div><span className="text-gray-400">SAP ID:</span> <span className="text-white">{details.application.form_responses.personal_info.sap_id}</span></div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Organization Preferences */}
+                    {details.application.form_responses.organization_preferences.department_to_join && (
+                      <div>
+                        <div className="text-gray-400 mb-2 font-medium">Organization Preferences</div>
+                        <div className="bg-white/5 border border-white/10 rounded p-3 text-sm">
+                          <div><span className="text-gray-400">Department to Join:</span> <span className="text-white">{details.application.form_responses.organization_preferences.department_to_join}</span></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Application Questions */}
+                    <div>
+                      <div className="text-gray-400 mb-2 font-medium">Application Questions</div>
+                      <div className="bg-white/5 border border-white/10 rounded p-3 space-y-3 text-sm">
+                        {details.application.form_responses.application_questions.why_join && (
+                          <div>
+                            <div className="text-gray-400 mb-1">Why do you want to join this organization?</div>
+                            <div className="text-white bg-white/5 rounded p-2">{details.application.form_responses.application_questions.why_join}</div>
+                          </div>
+                        )}
+                        {details.application.form_responses.application_questions.what_contribute && (
+                          <div>
+                            <div className="text-gray-400 mb-1">What can you contribute to the organization?</div>
+                            <div className="text-white bg-white/5 rounded p-2">{details.application.form_responses.application_questions.what_contribute}</div>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-gray-400">Can stay for longer hours when required:</span> 
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs ${details.application.form_responses.application_questions.can_stay_longer_hours ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                            {details.application.form_responses.application_questions.can_stay_longer_hours ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Application Status */}
+                    <div>
+                      <div className="text-gray-400 mb-2 font-medium">Application Status</div>
+                      <div className="bg-white/5 border border-white/10 rounded p-3 space-y-2 text-sm">
+                        <div><span className="text-gray-400">Status:</span> <span className="text-white capitalize">{details.application.form_responses.status_info.status}</span></div>
+                        <div><span className="text-gray-400">Applied On:</span> <span className="text-white">{new Date(details.application.form_responses.status_info.applied_at).toLocaleDateString()}</span></div>
+                        {details.application.form_responses.status_info.reviewed_at && (
+                          <div><span className="text-gray-400">Reviewed On:</span> <span className="text-white">{new Date(details.application.form_responses.status_info.reviewed_at).toLocaleDateString()}</span></div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <div className="text-gray-400 mb-1">Interests</div>
                   <div className="flex flex-wrap gap-2">
@@ -361,7 +430,8 @@ const RecruitmentPage = () => {
                   </div>
                 </div>
                 <div className="pt-2 flex gap-2">
-                  <button onClick={()=>updateStatus(selected.id, 'active')} className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded">Select</button>
+                  <button onClick={()=>updateStatus(selected.id, 'shortlisted')} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-white rounded">Shortlist</button>
+                  <button onClick={()=>updateStatus(selected.id, 'selected')} className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded">Select</button>
                   <button onClick={()=>updateStatus(selected.id, 'rejected')} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded">Reject</button>
                 </div>
               </div>

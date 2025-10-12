@@ -14,7 +14,7 @@ import auth
 # CLUBS ENDPOINTS (Replacing Organizations)
 # =============================================================================
 
-async def get_all_clubs(current_user=Depends(auth.get_current_user)):
+async def get_all_clubs(current_user):
     """Get all clubs with membership status for current user (replaces /organizations)"""
     try:
         connection = get_mysql_connection()
@@ -69,7 +69,7 @@ async def get_all_clubs(current_user=Depends(auth.get_current_user)):
         if 'connection' in locals():
             connection.close()
 
-async def get_detailed_clubs(current_user=Depends(auth.get_current_user)):
+async def get_detailed_clubs(current_user):
     """Get detailed clubs info (replaces /organizations/detailed)"""
     try:
         connection = get_mysql_connection()
@@ -86,10 +86,9 @@ async def get_detailed_clubs(current_user=Depends(auth.get_current_user)):
                    u.phone as head_phone
             FROM clubs c
             LEFT JOIN users u ON u.id = c.created_by
-            WHERE (c.college_id = %s OR %s IS NULL) AND c.is_active = TRUE 
+            WHERE c.is_active = TRUE 
             ORDER BY c.featured DESC, c.member_count DESC, c.name ASC
-            """,
-            (college_id, college_id)
+            """
         )
         clubs = cursor.fetchall()
         
@@ -147,7 +146,7 @@ async def get_detailed_clubs(current_user=Depends(auth.get_current_user)):
         if 'connection' in locals():
             connection.close()
 
-async def apply_to_club(club_id: int, application_data: dict, current_user=Depends(auth.get_current_user)):
+async def apply_to_club(club_id: int, application_data: dict, current_user):
     """Apply to join a club (replaces /organizations/{org_id}/apply)"""
     if current_user.get("role") != "student":
         raise HTTPException(status_code=403, detail="Only students can apply to clubs")
@@ -219,11 +218,11 @@ async def apply_to_club(club_id: int, application_data: dict, current_user=Depen
         if 'connection' in locals():
             connection.close()
 
-async def join_club_simple(club_id: int, current_user=Depends(auth.get_current_user)):
+async def join_club_simple(club_id: int, current_user):
     """Simple join club endpoint (replaces /organizations/{org_id}/join)"""
     return await apply_to_club(club_id, {"message": "Quick join request"}, current_user)
 
-async def get_my_clubs(current_user=Depends(auth.get_current_user)):
+async def get_my_clubs(current_user):
     """Get clubs the current user is a member of (replaces /organizations/my)"""
     if current_user.get("role") != "student":
         raise HTTPException(status_code=403, detail="Students only")
@@ -259,7 +258,7 @@ async def get_my_clubs(current_user=Depends(auth.get_current_user)):
         if 'connection' in locals():
             connection.close()
 
-async def get_my_managed_clubs(current_user=Depends(auth.get_current_user)):
+async def get_my_managed_clubs(current_user):
     """Get clubs managed by current user (replaces /organizations/mine)"""
     try:
         connection = get_mysql_connection()
@@ -292,7 +291,7 @@ async def get_my_managed_clubs(current_user=Depends(auth.get_current_user)):
         if 'connection' in locals():
             connection.close()
 
-async def get_club_members(club_id: int, status: Optional[str] = None, current_user=Depends(auth.get_current_user)):
+async def get_club_members(club_id: int, status: Optional[str] = None, current_user=None):
     """Get members of a club (replaces /organizations/{org_id}/members)"""
     try:
         connection = get_mysql_connection()
@@ -338,43 +337,146 @@ async def get_club_members(club_id: int, status: Optional[str] = None, current_u
         if 'connection' in locals():
             connection.close()
 
-async def update_member_status(user_id: int, payload: dict, current_user=Depends(auth.get_current_user)):
+async def update_member_status(user_id: int, payload: dict, current_user):
     """Update a member's status in clubs (replaces /organizations/members/{user_id}/status)"""
     try:
         connection = get_mysql_connection()
         cursor = connection.cursor(dictionary=True)
         
         new_status = payload.get("status")
-        if new_status not in ["approved", "rejected", "pending"]:
-            raise HTTPException(status_code=400, detail="Invalid status")
+        # Map frontend status values to backend values
+        status_mapping = {
+            "approved": "approved",
+            "rejected": "rejected", 
+            "pending": "pending",
+            "active": "approved",  # Frontend "active" means approved/selected
+            "shortlisted": "pending",  # Frontend "shortlisted" keeps as pending but sends notification
+            "selected": "approved"  # Frontend "selected" means approved
+        }
         
-        # Find the club membership to update (user must own the club)
+        frontend_status = new_status
+        backend_status = status_mapping.get(new_status, new_status)
+        
+        # Allow all valid frontend statuses
+        valid_frontend_statuses = ["approved", "rejected", "pending", "active", "shortlisted", "selected"]
+        valid_backend_statuses = ["approved", "rejected", "pending"]
+        
+        if frontend_status not in valid_frontend_statuses or backend_status not in valid_backend_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {new_status}. Valid statuses: {valid_frontend_statuses}")
+        
+        # First, find all clubs owned by the current user
         cursor.execute(
-            """
-            SELECT cm.id, cm.club_id, c.name as club_name
+            "SELECT id FROM clubs WHERE created_by = %s",
+            (current_user["id"],)
+        )
+        owned_clubs = cursor.fetchall()
+        
+        if not owned_clubs:
+            raise HTTPException(status_code=403, detail="You don't own any clubs")
+        
+        club_ids = [club['id'] for club in owned_clubs]
+        placeholders = ','.join(['%s'] * len(club_ids))
+        
+        # Look for membership in club_memberships table
+        cursor.execute(
+            f"""
+            SELECT cm.id, cm.club_id, c.name as club_name, u.full_name as user_name, 'club_membership' as source_table
             FROM club_memberships cm
             JOIN clubs c ON c.id = cm.club_id
-            WHERE cm.user_id = %s AND c.created_by = %s
+            JOIN users u ON u.id = cm.user_id
+            WHERE cm.user_id = %s AND cm.club_id IN ({placeholders})
             """,
-            (user_id, current_user["id"])
+            [user_id] + club_ids
         )
         membership = cursor.fetchone()
         
+        # If not found in club_memberships, check organization_applications
         if not membership:
-            raise HTTPException(status_code=404, detail="Membership not found or not authorized")
+            cursor.execute(
+                f"""
+                SELECT oa.id, oa.club_id, c.name as club_name, u.full_name as user_name, 'organization_application' as source_table
+                FROM organization_applications oa
+                JOIN clubs c ON c.id = oa.club_id
+                JOIN users u ON u.id = oa.user_id
+                WHERE oa.user_id = %s AND oa.club_id IN ({placeholders})
+                """,
+                [user_id] + club_ids
+            )
+            membership = cursor.fetchone()
         
-        # Update status
-        cursor.execute(
-            """
-            UPDATE club_memberships 
-            SET status = %s, reviewed_by = %s, reviewed_at = NOW()
-            WHERE id = %s
-            """,
-            (new_status, current_user["id"], membership["id"])
-        )
+        if not membership:
+            raise HTTPException(status_code=404, detail=f"No application found for user {user_id} in your clubs")
         
-        connection.commit()
-        return {"message": f"Member status updated to {new_status}", "club": membership["club_name"]}
+        membership['is_org_application'] = membership['source_table'] == 'organization_application'
+        
+        # Update status in the appropriate table
+        if membership.get('is_org_application'):
+            cursor.execute(
+                """
+                UPDATE organization_applications 
+                SET status = %s, reviewed_by = %s, reviewed_at = NOW()
+                WHERE id = %s
+                """,
+                (backend_status, current_user["id"], membership["id"])
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE club_memberships 
+                SET status = %s, reviewed_by = %s, reviewed_at = NOW()
+                WHERE id = %s
+                """,
+                (backend_status, current_user["id"], membership["id"])
+            )
+        
+        # Send notification based on the action
+        org_name = membership['club_name']
+        user_name = membership['user_name']
+        
+        if frontend_status == 'pending' or frontend_status == 'shortlisted':  # Shortlisted for interview
+            cursor.execute(
+                """
+                INSERT INTO notifications (user_id, title, message, type, priority)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    "🌟 You've been shortlisted!",
+                    f"Congratulations! You have been shortlisted for an interview with {org_name}. We were impressed with your application and would like to learn more about you. Please check your email for further details about the interview process.",
+                    "general",
+                    "high"
+                )
+            )
+        elif frontend_status == 'active' or backend_status == 'approved':  # Selected/Approved
+            cursor.execute(
+                """
+                INSERT INTO notifications (user_id, title, message, type, priority)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    "🎉 Congratulations! You've been selected!",
+                    f"Great news! You have been selected to join {org_name}. Welcome to the team! We're excited to have you on board and look forward to working with you.",
+                    "general",
+                    "high"
+                )
+            )
+        elif backend_status == 'rejected':
+            cursor.execute(
+                """
+                INSERT INTO notifications (user_id, title, message, type, priority)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    "Application Update",
+                    f"Thank you for your interest in {org_name}. After careful consideration, we have decided to move forward with other candidates at this time. We encourage you to apply for future opportunities.",
+                    "general",
+                    "medium"
+                )
+            )
+        
+        return {"message": f"Member status updated to {frontend_status}", "club": membership["club_name"]}
         
     except mysql.connector.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
@@ -383,8 +485,10 @@ async def update_member_status(user_id: int, payload: dict, current_user=Depends
             cursor.close()
         if 'connection' in locals():
             connection.close()
+        if 'connection' in locals():
+            connection.close()
 
-async def get_my_club_stats(current_user=Depends(auth.get_current_user)):
+async def get_my_club_stats(current_user):
     """Get statistics for clubs managed by current user (replaces /organizations/mine/stats)"""
     try:
         connection = get_mysql_connection()
@@ -453,7 +557,7 @@ async def get_my_club_stats(current_user=Depends(auth.get_current_user)):
         if 'connection' in locals():
             connection.close()
 
-async def create_recruitment_post(club_id: int, data: dict, current_user=Depends(auth.get_current_user)):
+async def create_recruitment_post(club_id: int, data: dict, current_user):
     """Create a recruitment post for a club (replaces /organizations/{org_id}/recruitment-post)"""
     try:
         connection = get_mysql_connection()
@@ -507,7 +611,7 @@ async def create_recruitment_post(club_id: int, data: dict, current_user=Depends
 # CLUB SEARCH AND FILTERING
 # =============================================================================
 
-async def search_clubs(query: str = "", category: str = "", current_user=Depends(auth.get_current_user)):
+async def search_clubs(current_user, query: str = "", category: str = ""):
     """Search and filter clubs"""
     try:
         connection = get_mysql_connection()

@@ -238,37 +238,22 @@ export default function OrganizationCanteenPage() {
           }
         }
         
-        // Mock orders for organization
-        const mockOrders: Order[] = [
-          {
-            id: 1,
-            items: [
-              { ...getFallbackMenuItems()[7], quantity: 2 },
-              { ...getFallbackMenuItems()[8], quantity: 1 }
-            ],
-            total: 4200,
-            status: 'pending',
-            orderTime: '10:30 AM',
-            deliveryLocation: 'Auditorium',
-            eventDetails: 'Annual Tech Symposium on Sept 30, 2025. Expected attendance: 100 students.',
-            isApproved: false
-          },
-          {
-            id: 2,
-            items: [
-              { ...getFallbackMenuItems()[6], quantity: 3 }
-            ],
-            total: 2250,
-            status: 'approved',
-            orderTime: '09:15 AM',
-            deliveryTime: '12:00 PM',
-            deliveryLocation: 'Conference Room B',
-            eventDetails: 'Club Orientation Meeting on Sept 25, 2025. Expected attendance: 50 students.',
-            isApproved: true
+        // Fetch organization orders from API
+        try {
+          const ordersResponse = await fetch(`${API}/organization/orders`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          if (ordersResponse.ok) {
+            const ordersData = await ordersResponse.json();
+            setOrders(ordersData.orders || []);
+          } else {
+            setOrders([]);
           }
-        ];
-        
-        setOrders(mockOrders);
+        } catch (ordersError) {
+          console.error('Error fetching orders:', ordersError);
+          setOrders([]);
+        }
         setLoading(false);
       } catch (error) {
         console.error('Error fetching data:', error);

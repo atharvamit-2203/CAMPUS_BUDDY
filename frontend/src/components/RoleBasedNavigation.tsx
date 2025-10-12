@@ -23,7 +23,8 @@ import {
   Building,
   Bell,
   Loader2,
-  MapPin
+  MapPin,
+  Clock
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -94,14 +95,57 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
   };
 
   const markAllAsRead = async () => {
-    if (!authToken) return;
+    if (!authToken || notifications.length === 0) return;
+    
     try {
       const unread = notifications.filter(n => !n.read);
-      await Promise.all(unread.map(n => fetch(`${API}/notifications/${n.id}/read`, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } })));
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch {
-      // ignore
+      if (unread.length === 0) return;
+
+      // Try the bulk mark as read endpoint first
+      const bulkResponse = await fetch(`${API}/notifications/mark-read`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          notification_ids: unread.map(n => n.id) 
+        })
+      });
+
+      if (bulkResponse.ok) {
+        // Bulk update successful
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+        return;
+      }
+
+      // Fallback to individual updates
+      const results = await Promise.allSettled(
+        unread.map(n => 
+          fetch(`${API}/notifications/${n.id}/read`, { 
+            method: 'POST', 
+            headers: { Authorization: `Bearer ${authToken}` } 
+          })
+        )
+      );
+
+      // Update UI for successful requests
+      const successfulIds = unread
+        .filter((_, index) => results[index].status === 'fulfilled')
+        .map(n => n.id);
+
+      setNotifications(prev => 
+        prev.map(n => ({ 
+          ...n, 
+          read: successfulIds.includes(n.id) ? true : n.read 
+        }))
+      );
+      
+      setUnreadCount(prev => Math.max(0, prev - successfulIds.length));
+      
+    } catch (error) {
+      console.error('Failed to mark notifications as read:', error);
     }
   };
 
@@ -225,8 +269,12 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
           <div className="flex items-center space-x-2">
             <div className="relative" ref={panelRef}>
               <button
-                className="relative p-2 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white"
-                title="Notifications"
+                className={`relative p-2 rounded-lg transition-all duration-200 ${
+                  unreadCount > 0 
+                    ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 animate-pulse' 
+                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                }`}
+                title={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
                 onClick={async () => {
                   const next = !openPanel;
                   setOpenPanel(next);
@@ -235,11 +283,14 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
                   }
                 }}
               >
-                <Bell className="w-5 h-5" />
+                <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'animate-bounce' : ''}`} />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 animate-pulse shadow-lg">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
+                )}
+                {unreadCount > 0 && (
+                  <div className="absolute inset-0 bg-blue-400/20 rounded-lg animate-ping"></div>
                 )}
               </button>
             </div>
@@ -247,30 +298,92 @@ const RoleBasedNavigation: React.FC<NavigationProps> = ({ currentPage }) => {
           </div>
 
           {openPanel && (
-            <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-white/10 rounded-lg shadow-xl z-50">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
-                <span className="text-white font-medium">Notifications</span>
-                <button onClick={markAllAsRead} className="text-xs text-blue-400 hover:text-blue-300">Mark all as read</button>
+            <div className="fixed top-16 right-2 sm:right-4 w-[95vw] sm:w-[420px] max-w-[420px] bg-gray-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl z-[100] max-h-[calc(100vh-80px)] overflow-hidden">
+              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/20 bg-gradient-to-r from-blue-500/10 to-purple-500/10">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-500/20 rounded-lg">
+                    <Bell className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <span className="text-white font-semibold">Notifications</span>
+                    {notifications.length > 0 && (
+                      <div className="text-xs text-gray-400">
+                        {notifications.filter(n => !n.read).length} unread of {notifications.length}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {notifications.length > 0 && notifications.some(n => !n.read) && (
+                    <button 
+                      onClick={markAllAsRead} 
+                      className="text-xs text-blue-400 hover:text-blue-300 font-medium bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setOpenPanel(false)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    title="Close"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <div className="max-h-80 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent min-h-0">
                 {loadingPanel ? (
-                  <div className="flex items-center justify-center py-6 text-gray-400">
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading...
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <div className="relative">
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                      <div className="absolute inset-0 w-8 h-8 border-2 border-blue-400/20 rounded-full"></div>
+                    </div>
+                    <div className="mt-4 text-sm">Loading notifications...</div>
+                    <div className="text-xs text-gray-500 mt-1">Please wait a moment</div>
                   </div>
                 ) : notifications.length === 0 ? (
-                  <div className="p-4 text-gray-400 text-sm">No notifications</div>
+                  <div className="p-6 sm:p-8 text-center">
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Bell className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <div className="text-gray-300 font-medium mb-2">All caught up!</div>
+                    <div className="text-sm text-gray-500">No new notifications to show</div>
+                  </div>
                 ) : (
-                  <ul className="divide-y divide-white/10">
+                  <div className="divide-y divide-white/5">
                     {notifications.map((n) => (
-                      <li key={n.id} className={`p-4 ${n.read ? 'opacity-70' : ''}`}>
-                        <div className="text-sm font-semibold text-white">{n.title || 'Notification'}</div>
-                        {n.message && <div className="text-sm text-gray-300 mt-1">{n.message}</div>}
-                        {n.created_at && (
-                          <div className="text-xs text-gray-500 mt-1">{new Date(n.created_at).toLocaleString()}</div>
-                        )}
-                      </li>
+                      <div key={n.id} className={`p-4 sm:p-5 transition-all duration-200 hover:bg-white/5 cursor-pointer ${!n.read ? 'bg-blue-500/5 border-l-4 border-l-blue-400' : ''}`}>
+                        <div className="flex items-start space-x-3">
+                          <div className={`w-3 h-3 rounded-full mt-1.5 flex-shrink-0 ${!n.read ? 'bg-blue-400 animate-pulse' : 'bg-gray-600'}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <h4 className={`text-sm font-medium leading-snug break-words ${!n.read ? 'text-white' : 'text-gray-300'}`}>
+                                {n.title || 'Notification'}
+                              </h4>
+                              {!n.read && (
+                                <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">New</span>
+                              )}
+                            </div>
+                            {n.message && (
+                              <p className={`text-sm mt-2 leading-relaxed break-words ${!n.read ? 'text-gray-200' : 'text-gray-400'}`}>
+                                {n.message}
+                              </p>
+                            )}
+                            {n.created_at && (
+                              <div className="text-xs text-gray-500 mt-3 flex items-center">
+                                <Clock className="w-3 h-3 mr-1 flex-shrink-0" />
+                                <span className="truncate">
+                                  {new Date(n.created_at).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
             </div>

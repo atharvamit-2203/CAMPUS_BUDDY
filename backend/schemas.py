@@ -8,6 +8,7 @@ class UserRole(str, Enum):
     faculty = "faculty"
     organization = "organization"
     admin = "admin"
+    staff = "staff"
 
 class UserRegister(BaseModel):
     username: str

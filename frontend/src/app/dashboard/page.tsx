@@ -34,8 +34,12 @@ const DashboardPage = () => {
           console.log('Dashboard - Redirecting to organization dashboard');
           router.push('/dashboard/organization');
           break;
-        default:
+        case 'admin':
           console.log('Dashboard - Redirecting to admin dashboard');
+          router.push('/dashboard/admin');
+          break;
+        default:
+          console.log('Dashboard - Unknown role, redirecting to admin dashboard');
           router.push('/dashboard/admin');
           break;
       }

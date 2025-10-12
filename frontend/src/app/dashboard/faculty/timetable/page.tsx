@@ -63,50 +63,28 @@ export default function FacultyTimetablePage() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   useEffect(() => {
-    // Simulate API call (kept as-is for grid), and set loading false
+    // Fetch faculty timetable from API
     const fetchTimetable = async () => {
       try {
-        const mockTimetable: TimetableDay[] = days.map((day, dayIndex) => ({
-          day,
-          date: `2025-09-${15 + dayIndex}`,
-          slots: timeSlots.map((time, timeIndex) => {
-            // Generate some sample data
-            const slotId = dayIndex * 10 + timeIndex;
-            const subjects = [
-              { name: 'Data Structures & Algorithms', course: 'Computer Science', semester: '6th Sem', room: 'Room 301' },
-              { name: 'Web Development', course: 'Computer Science', semester: '6th Sem', room: 'Lab 2' },
-              { name: 'Database Systems', course: 'Computer Science', semester: '6th Sem', room: 'Room 205' },
-              { name: 'Free', course: '', semester: '', room: '' }
-            ];
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/faculty/timetable`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
 
-            // Assign subjects randomly but realistically
-            let assignedSubject = subjects[3]; // Default to free
-            if (timeIndex >= 1 && timeIndex <= 6 && dayIndex < 5) { // Working hours, weekdays
-              if ((dayIndex + timeIndex) % 3 === 0) assignedSubject = subjects[0];
-              else if ((dayIndex + timeIndex) % 3 === 1) assignedSubject = subjects[1];
-              else if ((dayIndex + timeIndex) % 3 === 2) assignedSubject = subjects[2];
-            }
-
-            return {
-              id: slotId,
-              day,
-              time,
-              subject: assignedSubject.name === 'Free' ? undefined : assignedSubject.name,
-              course: assignedSubject.course || undefined,
-              semester: assignedSubject.semester || undefined,
-              room: assignedSubject.room || undefined,
-              duration: 60,
-              type: assignedSubject.name === 'Free' ? 'free' : 
-                    assignedSubject.room?.includes('Lab') ? 'practical' : 'lecture',
-              students: assignedSubject.name === 'Free' ? undefined : 45
-            } as TimeSlot;
-          })
-        }));
-
-        setTimetable(mockTimetable);
+        if (response.ok) {
+          const data = await response.json();
+          setTimetable(data.timetable || []);
+        } else {
+          // Set empty timetable if API fails
+          setTimetable([]);
+        }
         setLoading(false);
       } catch (error) {
         console.error('Error fetching timetable:', error);
+        setTimetable([]);
         setLoading(false);
       }
     };

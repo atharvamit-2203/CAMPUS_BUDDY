@@ -117,100 +117,58 @@ const OrganizationDashboard = () => {
     if (user) {
       const fetchOrganizationData = async () => {
         try {
-          // Mock data - replace with actual API calls
-          setEvents([
-            {
-              id: 1,
-              title: 'Campus Recruitment Drive 2025',
-              description: 'Annual recruitment for software engineering positions',
-              date: '2025-09-25',
-              time: '10:00 AM',
-              venue: 'Main Auditorium',
-              registrations: 156,
-              capacity: 200,
-              status: 'upcoming',
-              type: 'recruitment'
-            },
-            {
-              id: 2,
-              title: 'Tech Workshop: Web Development',
-              description: 'Hands-on workshop on modern web technologies',
-              date: '2025-09-18',
-              time: '2:00 PM',
-              venue: 'Tech Lab 101',
-              registrations: 45,
-              capacity: 50,
-              status: 'upcoming',
-              type: 'workshop'
+          // Fetch events from API
+          const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+          const eventsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/organization/events`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
             }
-          ]);
+          });
+          
+          if (eventsResponse.ok) {
+            const eventsData = await eventsResponse.json();
+            setEvents(eventsData.events || []);
+          }
 
-          setCandidates([
-            {
-              id: 1,
-              name: 'John Smith',
-              university: 'Tech University',
-              course: 'Computer Science',
-              year: '4th Year',
-              skills: ['React', 'Node.js', 'Python'],
-              cgpa: 8.5,
-              status: 'shortlisted',
-              appliedPosition: 'Software Engineer'
-            },
-            {
-              id: 2,
-              name: 'Sarah Johnson',
-              university: 'Engineering College',
-              course: 'Information Technology',
-              year: '4th Year',
-              skills: ['Java', 'Spring Boot', 'Angular'],
-              cgpa: 9.2,
-              status: 'interviewed',
-              appliedPosition: 'Full Stack Developer'
+          // Fetch candidates from API
+          const candidatesResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/organization/candidates`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
             }
-          ]);
+          });
+          
+          if (candidatesResponse.ok) {
+            const candidatesData = await candidatesResponse.json();
+            setCandidates(candidatesData.candidates || []);
+          }
 
-          setTeams([
-            {
-              id: 1,
-              name: 'Frontend Development',
-              department: 'Engineering',
-              members: 8,
-              lead: 'Alex Chen',
-              projects: 3,
-              performance: 92
-            },
-            {
-              id: 2,
-              name: 'Backend Development',
-              department: 'Engineering',
-              members: 6,
-              lead: 'Maria Rodriguez',
-              projects: 5,
-              performance: 88
+          // Fetch teams from API
+          const teamsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/organization/teams`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
             }
-          ]);
+          });
+          
+          if (teamsResponse.ok) {
+            const teamsData = await teamsResponse.json();
+            setTeams(teamsData.teams || []);
+          }
 
-          setMeetings([
-            {
-              id: 1,
-              title: 'Weekly Team Standup',
-              date: '2025-09-13',
-              time: '10:00 AM',
-              attendees: 12,
-              type: 'team',
-              status: 'scheduled'
-            },
-            {
-              id: 2,
-              title: 'Client Review Meeting',
-              date: '2025-09-14',
-              time: '3:00 PM',
-              attendees: 6,
-              type: 'client',
-              status: 'scheduled'
+          // Fetch meetings from API
+          const meetingsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/organization/meetings`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
             }
-          ]);
+          });
+          
+          if (meetingsResponse.ok) {
+            const meetingsData = await meetingsResponse.json();
+            setMeetings(meetingsData.meetings || []);
+          }
         } catch (error) {
           console.error('Error fetching organization data:', error);
         }
@@ -221,6 +179,26 @@ const OrganizationDashboard = () => {
   }, [user]);
 
   useEffect(()=>{ loadBookings(); }, []);
+
+  // Filter out past events
+  const filterUpcomingEvents = (eventsList: Event[]) => {
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0); // Reset time to start of day for comparison
+    
+    return eventsList.filter(event => {
+      try {
+        const eventDate = new Date(event.date);
+        eventDate.setHours(0, 0, 0, 0); // Reset time to start of day for comparison
+        return eventDate >= currentDate;
+      } catch (error) {
+        console.error('Error parsing event date:', event.date, error);
+        return false; // Exclude events with invalid dates
+      }
+    });
+  };
+
+  // Get filtered upcoming events
+  const upcomingEvents = filterUpcomingEvents(events);
 
   const handleCreateEvent = () => {
     router.push('/dashboard/organization/events');
@@ -244,8 +222,8 @@ const OrganizationDashboard = () => {
             <p className="text-gray-300">Manage your organization&apos;s activities and growth</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold text-green-400">{events.length}</div>
-            <div className="text-sm text-gray-400">Active Events</div>
+            <div className="text-3xl font-bold text-green-400">{upcomingEvents.length}</div>
+            <div className="text-sm text-gray-400">Upcoming Events</div>
           </div>
         </div>
       </div>
@@ -256,8 +234,8 @@ const OrganizationDashboard = () => {
           <div className="flex items-center space-x-3">
             <Calendar className="w-8 h-8 text-blue-400" />
             <div>
-              <div className="text-xl font-bold text-white">{events.length}</div>
-              <div className="text-sm text-gray-400">Events</div>
+              <div className="text-xl font-bold text-white">{upcomingEvents.length}</div>
+              <div className="text-sm text-gray-400">Upcoming Events</div>
             </div>
           </div>
         </div>
@@ -430,7 +408,7 @@ const OrganizationDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {events.map((event) => (
+        {upcomingEvents.length > 0 ? upcomingEvents.map((event) => (
           <div key={event.id} className="bg-black/40 border border-white/10 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -479,7 +457,20 @@ const OrganizationDashboard = () => {
               </button>
             </div>
           </div>
-        ))}
+        )) : (
+          <div className="col-span-full text-center py-12">
+            <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-white mb-2">No Upcoming Events</h3>
+            <p className="text-gray-400 mb-6">Create your first event to start engaging with students</p>
+            <button 
+              onClick={handleCreateEvent}
+              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors mx-auto"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Create Event</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

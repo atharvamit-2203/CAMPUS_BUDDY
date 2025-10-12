@@ -223,8 +223,10 @@ export interface UserSummary {
   id: number;
   full_name: string;
   email: string;
-  role: 'student' | 'faculty' | 'organization';
-  college_name: string;
+  role: 'student' | 'faculty' | 'organization' | 'admin' | 'staff';
+  department: string;
+  course: string;
+  semester: string;
   status: 'active' | 'inactive' | 'suspended';
   last_login: string;
   created_at: string;
@@ -525,6 +527,94 @@ export const adminAPI = {
     return await apiCall(`/admin/alerts/${alertId}/resolve`, {
       method: 'PUT',
     });
+  },
+
+  // Admin User Management endpoints
+  addStudent: async (studentData: any) => {
+    return await apiCall('/admin/students/add', {
+      method: 'POST',
+      body: JSON.stringify(studentData),
+    });
+  },
+
+  addTeacher: async (teacherData: any) => {
+    return await apiCall('/admin/teachers/add', {
+      method: 'POST',
+      body: JSON.stringify(teacherData),
+    });
+  },
+
+  uploadStudentsCSV: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await apiCall('/admin/students/upload-csv', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  uploadTeachersCSV: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await apiCall('/admin/teachers/upload-csv', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  getImportLogs: async (limit: number = 50) => {
+    return await apiCall(`/admin/import-logs?limit=${limit}`);
+  },
+
+  getUserStatistics: async () => {
+    return await apiCall('/admin/user-statistics');
+  },
+
+  searchUsers: async (query: string = '', role: string = '', limit: number = 50) => {
+    const params = new URLSearchParams();
+    if (query) params.append('query', query);
+    if (role) params.append('role', role);
+    if (limit) params.append('limit', limit.toString());
+    return await apiCall(`/admin/users/search?${params.toString()}`);
+  },
+
+  // Club Calendar endpoints
+  getClubCalendar: async (clubId: number, year: number, month: number) => {
+    return await apiCall(`/clubs/${clubId}/calendar/${year}/${month}`);
+  },
+
+  getAllClubsCalendar: async (year: number, month: number, clubFilter?: string) => {
+    const params = new URLSearchParams();
+    if (clubFilter) params.append('club_filter', clubFilter);
+    return await apiCall(`/calendar/all/${year}/${month}?${params.toString()}`);
+  },
+
+  createClubCalendarEvent: async (clubId: number, eventData: any) => {
+    return await apiCall(`/clubs/${clubId}/calendar/events`, {
+      method: 'POST',
+      body: JSON.stringify(eventData),
+    });
+  },
+
+  subscribeToClubCalendar: async (subscriberClubId: number, targetClubId: number) => {
+    return await apiCall(`/clubs/${subscriberClubId}/calendar/subscribe/${targetClubId}`, {
+      method: 'POST',
+    });
+  },
+
+  getClubCalendarSubscriptions: async (clubId: number) => {
+    return await apiCall(`/clubs/${clubId}/calendar/subscriptions`);
+  },
+
+  updateClubCalendarSettings: async (clubId: number, settings: any) => {
+    return await apiCall(`/clubs/${clubId}/calendar/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  getUpcomingEventsAllClubs: async (days: number = 30) => {
+    return await apiCall(`/calendar/upcoming?days=${days}`);
   },
 };
 

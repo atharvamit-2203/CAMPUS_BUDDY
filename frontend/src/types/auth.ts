@@ -8,7 +8,7 @@ export interface User {
   username: string;
   email: string;
   full_name: string;
-role: 'student' | 'faculty' | 'organization' | 'staff';
+role: 'student' | 'faculty' | 'organization' | 'staff' | 'admin';
   college_id?: number;
   department?: string;
   bio?: string;

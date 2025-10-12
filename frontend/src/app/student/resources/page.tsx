@@ -66,89 +66,15 @@ const LearningResourcesPage = () => {
           setResources(data.resources || []);
           setError(null);
         } catch (apiErr) {
-          // Fallback to mock data if API fails
-          console.warn('API call failed, using mock data:', apiErr);
-          const mockResources: LearningResource[] = [
-            {
-              id: '1',
-              title: 'Introduction to Data Structures and Algorithms',
-              description: 'Comprehensive guide covering fundamental data structures and algorithms with examples in Python',
-              type: 'document',
-              subject: 'Computer Science',
-              uploaded_by: 'Dr. Sarah Johnson',
-              upload_date: '2024-01-15',
-              file_size: 2500000, // 2.5MB
-              download_count: 145,
-              rating: 4.8,
-              tags: ['Data Structures', 'Algorithms', 'Python', 'Programming'],
-              file_url: '/api/placeholder/document.pdf',
-              thumbnail_url: '/api/placeholder/400/250'
-            },
-            {
-              id: '2',
-              title: 'Machine Learning Fundamentals',
-              description: 'Video lecture series covering the basics of machine learning, including supervised and unsupervised learning',
-              type: 'video',
-              subject: 'Artificial Intelligence',
-              uploaded_by: 'Prof. Michael Chen',
-              upload_date: '2024-01-20',
-              download_count: 89,
-              rating: 4.9,
-              tags: ['Machine Learning', 'AI', 'Data Science', 'Video Lecture'],
-              file_url: '/api/placeholder/video.mp4',
-              thumbnail_url: '/api/placeholder/400/250'
-            },
-            {
-              id: '3',
-              title: 'Database Design Principles',
-              description: 'Interactive presentation on database normalization, indexing, and query optimization',
-              type: 'presentation',
-              subject: 'Database Management',
-              uploaded_by: 'Dr. Emily Davis',
-              upload_date: '2024-01-10',
-              file_size: 1500000, // 1.5MB
-              download_count: 67,
-              rating: 4.6,
-              tags: ['Database', 'SQL', 'Normalization', 'Indexing'],
-              file_url: '/api/placeholder/presentation.pptx',
-              thumbnail_url: '/api/placeholder/400/250'
-            },
-            {
-              id: '4',
-              title: 'Web Development Resources Hub',
-              description: 'Curated collection of web development tutorials, frameworks, and best practices',
-              type: 'link',
-              subject: 'Web Development',
-              uploaded_by: 'Student Council',
-              upload_date: '2024-01-25',
-              download_count: 203,
-              rating: 4.7,
-              tags: ['Web Development', 'JavaScript', 'React', 'HTML', 'CSS'],
-              file_url: 'https://developer.mozilla.org/en-US/',
-              thumbnail_url: '/api/placeholder/400/250'
-            },
-            {
-              id: '5',
-              title: 'Advanced Calculus Study Guide',
-              description: 'Detailed study guide with solved examples and practice problems for advanced calculus topics',
-              type: 'document',
-              subject: 'Mathematics',
-              uploaded_by: 'Prof. Robert Wilson',
-              upload_date: '2024-01-05',
-              file_size: 3200000, // 3.2MB
-              download_count: 112,
-              rating: 4.5,
-              tags: ['Calculus', 'Mathematics', 'Study Guide', 'Advanced'],
-              file_url: '/api/placeholder/calculus.pdf',
-              thumbnail_url: '/api/placeholder/400/250'
-            }
-          ];
-          setResources(mockResources);
-          setError(null);
+          // Set empty resources if API fails
+          console.warn('API call failed:', apiErr);
+          setResources([]);
+          setError('Failed to load resources. Please try again later.');
         }
       } catch (err) {
         setError('Failed to load learning resources');
         console.error('Error fetching resources:', err);
+        setResources([]);
       } finally {
         setLoading(false);
       }

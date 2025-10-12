@@ -27,6 +27,7 @@ const EventsPage = () => {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showPastEvents, setShowPastEvents] = useState(false);
 
   // Simple create-event form
   const [form, setForm] = useState({
@@ -42,6 +43,27 @@ const EventsPage = () => {
   });
 
   const canCreate = useMemo(() => user && ['organization','faculty','admin'].includes(user.role), [user]);
+
+  // Filter events based on date
+  const filteredEvents = useMemo(() => {
+    if (showPastEvents) {
+      return events; // Show all events
+    }
+    
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    
+    return events.filter(event => {
+      try {
+        const eventDate = new Date(event.start_time);
+        eventDate.setHours(0, 0, 0, 0);
+        return eventDate >= currentDate;
+      } catch (error) {
+        console.error('Error parsing event date:', event.start_time, error);
+        return false;
+      }
+    });
+  }, [events, showPastEvents]);
 
   const loadEvents = async () => {
     try {
@@ -163,17 +185,45 @@ const EventsPage = () => {
           </>
         )}
 
+        {/* Toggle for showing past events */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">Your Events</h2>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-400">Show past events</span>
+            <button
+              onClick={() => setShowPastEvents(!showPastEvents)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                showPastEvents ? 'bg-blue-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  showPastEvents ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {loading ? (
             <div className="text-gray-300">Loading events...</div>
-          ) : events.length === 0 ? (
-            <div className="text-gray-400">No events found.</div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-gray-400">
+              {showPastEvents ? 'No events found.' : 'No upcoming events found.'}
+            </div>
           ) : (
-            events.map(ev => (
+            filteredEvents.map(ev => (
               <div key={ev.id} className="bg-black/40 border border-white/10 rounded-xl p-5">
                 <div className="text-white font-semibold text-lg mb-2">{ev.title}</div>
                 <div className="text-gray-300 text-sm mb-3">{ev.description}</div>
-                <div className="text-gray-400 text-sm flex items-center mb-1"><Calendar className="w-4 h-4 mr-2" /> {new Date(ev.start_time).toLocaleString()}</div>
+                <div className="text-gray-400 text-sm flex items-center mb-1">
+                  <Calendar className="w-4 h-4 mr-2" /> 
+                  {new Date(ev.start_time).toLocaleString()}
+                  {new Date(ev.start_time) < new Date() && (
+                    <span className="ml-2 px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded">Past</span>
+                  )}
+                </div>
                 <div className="text-gray-400 text-sm flex items-center mb-1"><Clock className="w-4 h-4 mr-2" /> to {new Date(ev.end_time).toLocaleTimeString()}</div>
                 <div className="text-gray-400 text-sm flex items-center"><MapPin className="w-4 h-4 mr-2" /> {ev.venue}</div>
               </div>
