@@ -18,9 +18,13 @@ import {
   Search,
   Filter,
   X,
-  Coffee
+  Coffee,
+  Building,
+  ShoppingBag
 } from 'lucide-react';
 import FacultyCanteenPage from '@/app/dashboard/faculty/canteen/page';
+import AllFacultyBookings from '@/components/AllFacultyBookings';
+import StaffCanteenOrders from '@/components/StaffCanteenOrders';
 
 // Faculty-specific interfaces
 interface Course {
@@ -742,6 +746,8 @@ const FacultyDashboard = () => {
                 { id: 'overview', label: 'Overview', icon: TrendingUp },
                 { id: 'courses', label: 'Courses', icon: BookOpen },
                 { id: 'students', label: 'Students', icon: Users },
+                { id: 'bookings', label: 'Faculty Bookings', icon: Building },
+                { id: 'staff-orders', label: 'Staff Orders', icon: ShoppingBag },
                 { id: 'canteen', label: 'Canteen', icon: Coffee }
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -768,6 +774,8 @@ const FacultyDashboard = () => {
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'courses' && renderCourses()}
         {activeTab === 'students' && renderStudents()}
+        {activeTab === 'bookings' && <AllFacultyBookings />}
+        {activeTab === 'staff-orders' && <StaffCanteenOrders />}
         {activeTab === 'canteen' && <FacultyCanteenPage />}
       </div>
     </div>

@@ -129,6 +129,50 @@ async def mark_all_notifications_read(
         if 'connection' in locals():
             connection.close()
 
+class BulkMarkReadRequest(BaseModel):
+    notification_ids: List[int]
+
+@router.post("/notifications/mark-read")
+async def bulk_mark_notifications_read(
+    request: BulkMarkReadRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Mark multiple notifications as read (bulk operation)"""
+    try:
+        if not request.notification_ids:
+            return {"message": "No notifications to mark", "updated_count": 0}
+        
+        connection = get_mysql_connection()
+        cursor = connection.cursor()
+        
+        # Create placeholders for the IN clause
+        placeholders = ','.join(['%s'] * len(request.notification_ids))
+        
+        # Mark notifications as read only if they belong to the current user
+        query = f"""
+            UPDATE notifications 
+            SET is_read = 1
+            WHERE user_id = %s AND id IN ({placeholders}) AND is_read = 0
+        """
+        
+        params = [current_user["id"]] + request.notification_ids
+        cursor.execute(query, params)
+        connection.commit()
+        updated_count = cursor.rowcount
+        
+        return {
+            "message": f"Successfully marked {updated_count} notifications as read",
+            "updated_count": updated_count
+        }
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
 @router.get("/notifications")
 async def get_user_notifications(
     current_user: dict = Depends(get_current_user),

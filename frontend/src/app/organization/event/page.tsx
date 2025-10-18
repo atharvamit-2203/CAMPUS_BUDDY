@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Eye, 
@@ -204,13 +204,107 @@ const EventManagement = () => {
   const [events, setEvents] = useState<Event[]>(initialEvents);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [viewEvent, setViewEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleCreateEvent = (newEventData: Omit<Event, 'id'>) => {
-    const newEvent: Event = {
-      ...newEventData,
-      id: events.length > 0 ? Math.max(...events.map(e => e.id)) + 1 : 1,
-    };
-    setEvents(prevEvents => [...prevEvents, newEvent]);
+  // Load events from backend on mount
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  const loadEvents = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/clubs/1/events', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Transform backend data to match Event interface
+        const transformedEvents = data.map((e: {
+          id: number;
+          title?: string;
+          event_name?: string;
+          description: string;
+          event_date?: string;
+          date?: string;
+          start_time?: string;
+          time?: string;
+          venue?: string;
+          location?: string;
+          registration_link?: string;
+          formLink?: string;
+          expected_participants?: number;
+          footfall?: string;
+          guest_speaker?: string;
+          guest?: string;
+        }) => ({
+          id: e.id,
+          title: e.title || e.event_name || '',
+          description: e.description,
+          date: e.event_date || e.date || '',
+          time: e.start_time || e.time || '',
+          venue: e.venue || e.location || '',
+          formLink: e.registration_link || e.formLink || 'https://forms.gle/example',
+          footfall: e.expected_participants?.toString() || e.footfall,
+          guest: e.guest_speaker || e.guest
+        }));
+        setEvents(transformedEvents);
+      }
+    } catch (error) {
+      console.error('Error loading events:', error);
+      // Keep initial events on error
+    }
+  };
+
+  const handleCreateEvent = async (newEventData: Omit<Event, 'id'>) => {
+    setLoading(true);
+    try {
+      // Save to backend
+      const response = await fetch('http://localhost:8000/clubs/1/calendar/events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          title: newEventData.title,
+          description: newEventData.description,
+          event_date: newEventData.date,
+          start_time: newEventData.time,
+          venue: newEventData.venue,
+          registration_link: newEventData.formLink,
+          expected_participants: newEventData.footfall ? parseInt(newEventData.footfall) : null,
+          guest_speaker: newEventData.guest,
+          event_type: 'club_activity',
+          is_public: true,
+          registration_required: true,
+          calendar_color: '#9333EA' // Purple color for club events
+        })
+      });
+
+      if (response.ok) {
+        const savedEvent = await response.json();
+        // Add to local state
+        const newEvent: Event = {
+          id: savedEvent.id,
+          ...newEventData
+        };
+        setEvents(prevEvents => [...prevEvents, newEvent]);
+        
+        // Trigger calendar refresh if parent component listens
+        window.dispatchEvent(new CustomEvent('eventCreated', { detail: newEvent }));
+      } else {
+        const error = await response.json();
+        alert(`Error creating event: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating event:', error);
+      alert('Failed to create event. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -218,10 +312,11 @@ const EventManagement = () => {
       <div className="flex items-center justify-end mb-6">
         <button
           onClick={() => setShowCreateEvent(true)}
-          className="bg-purple-600 text-white px-5 py-3 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2 shadow-md"
+          disabled={loading}
+          className="bg-purple-600 text-white px-5 py-3 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={20} />
-          <span className="font-semibold">Create Event</span>
+          <span className="font-semibold">{loading ? 'Creating...' : 'Create Event'}</span>
         </button>
       </div>
 
@@ -235,7 +330,7 @@ const EventManagement = () => {
       ) : (
         <div className="text-center py-16 bg-white rounded-xl border border-dashed">
             <h3 className="text-xl font-semibold text-gray-700">No Events Found</h3>
-            <p className="text-gray-500 mt-2">Click "Create Event" to get started.</p>
+            <p className="text-gray-500 mt-2">Click &quot;Create Event&quot; to get started.</p>
         </div>
       )}
 

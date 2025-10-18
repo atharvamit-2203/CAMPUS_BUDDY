@@ -316,15 +316,182 @@ def _gemini_ocr_image_to_json(image_bytes: bytes, prompt: str, mime_type: str = 
 
 @router.post("/ai/chat")
 async def ai_chat(payload: dict, current_user = Depends(auth.get_current_user)):
-    """Universal chatbot for students, faculty, organization, admins."""
+    """Enhanced chatbot that can answer questions about campus, events, clubs, canteen, and more."""
     message = (payload or {}).get("message", "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="message is required")
+    
     role = current_user.get("role", "user")
     name = current_user.get("full_name", "User")
-    prompt = f"Role: {role}\nName: {name}\nQuestion: {message}\nProvide a helpful answer based on campus systems like events, rooms, canteen, recruitment, organizations."
-    answer = _gemini_generate(prompt)
-    return {"role": role, "answer": answer}
+    user_id = current_user.get("id")
+    
+    # Gather relevant context from the database
+    context_data = {}
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # Get clubs/organizations info
+        try:
+            cursor.execute("""
+                SELECT id, name, description, category, member_count 
+                FROM clubs WHERE is_active = TRUE 
+                LIMIT 20
+            """)
+            context_data["clubs"] = cursor.fetchall() or []
+        except:
+            context_data["clubs"] = []
+        
+        # Get upcoming events
+        try:
+            cursor.execute("""
+                SELECT ce.id, ce.title, ce.description, ce.event_date, ce.start_time, 
+                       ce.venue, ce.event_type, c.name as club_name
+                FROM club_events ce
+                LEFT JOIN clubs c ON ce.club_id = c.id
+                WHERE ce.status = 'approved' AND ce.event_date >= CURDATE()
+                ORDER BY ce.event_date ASC
+                LIMIT 10
+            """)
+            context_data["events"] = cursor.fetchall() or []
+        except:
+            context_data["events"] = []
+        
+        # Get canteen menu if available
+        try:
+            cursor.execute("""
+                SELECT id, name, description, price, category, is_available
+                FROM canteen_menu
+                WHERE is_available = TRUE
+                LIMIT 15
+            """)
+            context_data["canteen_menu"] = cursor.fetchall() or []
+        except:
+            context_data["canteen_menu"] = []
+        
+        # Get user's interests if student
+        if role == "student":
+            try:
+                cursor.execute("""
+                    SELECT category FROM user_interest_categories 
+                    WHERE user_id = %s
+                """, (user_id,))
+                context_data["user_interests"] = [r["category"] for r in cursor.fetchall() or []]
+            except:
+                context_data["user_interests"] = []
+        
+        # Get user's club memberships
+        try:
+            cursor.execute("""
+                SELECT c.name, cm.role, cm.status
+                FROM club_memberships cm
+                JOIN clubs c ON cm.club_id = c.id
+                WHERE cm.user_id = %s AND cm.status = 'approved'
+            """, (user_id,))
+            context_data["user_clubs"] = cursor.fetchall() or []
+        except:
+            context_data["user_clubs"] = []
+        
+        # Get available facilities/rooms
+        try:
+            cursor.execute("""
+                SELECT room_name, capacity, facilities
+                FROM rooms
+                WHERE is_available = TRUE
+                LIMIT 10
+            """)
+            context_data["rooms"] = cursor.fetchall() or []
+        except:
+            context_data["rooms"] = []
+        
+        cursor.close()
+        connection.close()
+    except Exception as e:
+        print(f"Error gathering context: {e}")
+        context_data = {}
+    
+    # Build a comprehensive prompt with context
+    context_str = f"""
+You are CampusConnect AI Assistant, a helpful and knowledgeable assistant for a college campus portal.
+
+USER INFORMATION:
+- Name: {name}
+- Role: {role}
+- User ID: {user_id}
+
+AVAILABLE CAMPUS DATA:
+"""
+    
+    if context_data.get("clubs"):
+        context_str += f"\nAVAILABLE CLUBS/ORGANIZATIONS ({len(context_data['clubs'])}):\n"
+        for club in context_data["clubs"][:10]:
+            context_str += f"- {club.get('name')}: {club.get('description', 'No description')[:100]} (Category: {club.get('category', 'N/A')})\n"
+    
+    if context_data.get("events"):
+        context_str += f"\nUPCOMING EVENTS ({len(context_data['events'])}):\n"
+        for event in context_data["events"][:8]:
+            context_str += f"- {event.get('title')} on {event.get('event_date')} at {event.get('venue')} (by {event.get('club_name', 'Campus')})\n"
+    
+    if context_data.get("canteen_menu"):
+        context_str += f"\nCANTEEN MENU ITEMS ({len(context_data['canteen_menu'])}):\n"
+        for item in context_data["canteen_menu"][:10]:
+            context_str += f"- {item.get('name')}: ₹{item.get('price')} ({item.get('category', 'Food')})\n"
+    
+    if context_data.get("user_clubs"):
+        context_str += f"\nUSER'S CLUB MEMBERSHIPS:\n"
+        for club in context_data["user_clubs"]:
+            context_str += f"- {club.get('name')} (Role: {club.get('role', 'Member')})\n"
+    
+    if context_data.get("user_interests"):
+        context_str += f"\nUSER'S INTERESTS: {', '.join(context_data['user_interests'])}\n"
+    
+    if context_data.get("rooms"):
+        context_str += f"\nAVAILABLE ROOMS/FACILITIES:\n"
+        for room in context_data["rooms"][:5]:
+            context_str += f"- {room.get('room_name')} (Capacity: {room.get('capacity', 'N/A')})\n"
+    
+    context_str += f"""
+
+CAPABILITIES YOU HAVE:
+1. Answer questions about clubs, organizations, and how to join them
+2. Provide information about upcoming events and activities
+3. Help with canteen menu and food options
+4. Guide users on booking rooms and facilities
+5. Assist with student networking and skill development
+6. Provide information about campus resources and services
+7. Help with timetables, schedules, and planning
+8. Answer general campus-related questions
+
+USER'S QUESTION: {message}
+
+INSTRUCTIONS:
+- Be helpful, friendly, and concise
+- Use the context data provided above to give accurate, specific answers
+- If the question is about events, clubs, canteen, or rooms, reference the actual data
+- If asked about joining clubs, explain the membership process
+- If asked about events, mention specific upcoming events from the data
+- If you don't have specific information, provide general helpful guidance
+- Keep responses under 200 words unless more detail is specifically requested
+- Format your response in a clear, readable way
+
+YOUR RESPONSE:"""
+    
+    try:
+        answer = _gemini_generate(context_str, json_mode=False)
+        return {
+            "role": role,
+            "answer": answer,
+            "context_provided": bool(context_data),
+            "data_sources": list(context_data.keys())
+        }
+    except Exception as e:
+        # Fallback response if AI fails
+        return {
+            "role": role,
+            "answer": "I'm here to help! I can answer questions about campus clubs, events, the canteen menu, room bookings, and more. What would you like to know?",
+            "error": str(e)
+        }
 
 @router.post("/ai/ocr")
 async def generic_ocr(type: Optional[str] = None, file: UploadFile = File(...), current_user = Depends(auth.get_current_user)):
@@ -790,3 +957,193 @@ async def canteen_menu_ocr(file: UploadFile = File(...), replace: bool = True, c
         if 'conn' in locals():
             try: conn.close()
             except Exception: pass
+
+
+@router.post("/ai/extract-calendar")
+async def extract_calendar_from_file(
+    file: UploadFile = File(...),
+    current_user = Depends(auth.get_current_user)
+):
+    """
+    Extract event calendar data from uploaded files (PDF, CSV, Excel, Images).
+    Uses OCR for images/PDFs and parsing for structured data.
+    """
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    
+    # Check file extension
+    filename = file.filename.lower()
+    file_ext = os.path.splitext(filename)[1]
+    
+    allowed_extensions = ['.pdf', '.csv', '.xlsx', '.xls', '.jpg', '.jpeg', '.png', '.txt']
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+        )
+    
+    try:
+        # Read file content
+        content = await file.read()
+        
+        # Handle different file types
+        if file_ext == '.csv':
+            # Parse CSV directly
+            import csv
+            import io
+            csv_text = content.decode('utf-8')
+            csv_reader = csv.DictReader(io.StringIO(csv_text))
+            events = []
+            
+            for row in csv_reader:
+                event = {
+                    "title": row.get('title') or row.get('event_name') or row.get('name', ''),
+                    "description": row.get('description') or row.get('details', ''),
+                    "event_date": row.get('event_date') or row.get('date', ''),
+                    "start_time": row.get('start_time') or row.get('time', ''),
+                    "end_time": row.get('end_time', ''),
+                    "venue": row.get('venue') or row.get('location') or row.get('place', ''),
+                    "event_type": row.get('event_type') or row.get('type', 'other')
+                }
+                if event['title']:  # Only add if title exists
+                    events.append(event)
+            
+            return {"events": events, "source": "csv_parse", "count": len(events)}
+        
+        elif file_ext in ['.xlsx', '.xls']:
+            # Parse Excel file
+            try:
+                import pandas as pd
+                import io
+                df = pd.read_excel(io.BytesIO(content))
+                events = []
+                
+                # Try to map common column names
+                column_mapping = {
+                    'title': ['title', 'event_name', 'name', 'event'],
+                    'description': ['description', 'details', 'desc', 'about'],
+                    'event_date': ['event_date', 'date', 'day'],
+                    'start_time': ['start_time', 'time', 'start'],
+                    'end_time': ['end_time', 'end'],
+                    'venue': ['venue', 'location', 'place', 'room'],
+                    'event_type': ['event_type', 'type', 'category']
+                }
+                
+                # Find matching columns
+                col_map = {}
+                for key, possible_names in column_mapping.items():
+                    for col in df.columns:
+                        if col.lower() in possible_names:
+                            col_map[key] = col
+                            break
+                
+                # Extract events
+                for _, row in df.iterrows():
+                    event = {}
+                    for key, col_name in col_map.items():
+                        event[key] = str(row[col_name]) if pd.notna(row[col_name]) else ''
+                    
+                    if event.get('title'):
+                        events.append(event)
+                
+                return {"events": events, "source": "excel_parse", "count": len(events)}
+            except Exception as e:
+                # If pandas fails, fall back to AI extraction
+                print(f"Excel parsing failed: {e}, falling back to AI")
+                pass
+        
+        # For PDFs, images, or if structured parsing failed, use AI extraction
+        if file_ext in ['.pdf', '.jpg', '.jpeg', '.png'] or file_ext in ['.xlsx', '.xls', '.txt']:
+            # Convert to base64 for Gemini API
+            base64_content = base64.b64encode(content).decode('utf-8')
+            
+            # Determine MIME type
+            mime_types = {
+                '.pdf': 'application/pdf',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.txt': 'text/plain'
+            }
+            mime_type = mime_types.get(file_ext, 'application/octet-stream')
+            
+            # Prompt for AI to extract events
+            prompt = """
+Extract all events from this calendar/timetable document. For each event, extract:
+- title (event name)
+- description (event details)
+- event_date (in YYYY-MM-DD format)
+- start_time (in HH:MM format, 24-hour)
+- end_time (in HH:MM format, 24-hour)
+- venue (location/room)
+- event_type (workshop, seminar, cultural, sports, technical, other)
+
+Return ONLY a valid JSON array of events in this exact format:
+[
+  {
+    "title": "Event Name",
+    "description": "Event description",
+    "event_date": "2025-11-15",
+    "start_time": "10:00",
+    "end_time": "12:00",
+    "venue": "Room 301",
+    "event_type": "workshop"
+  }
+]
+
+If you see dates in other formats, convert to YYYY-MM-DD. If times are in 12-hour format, convert to 24-hour.
+Extract ALL events you can find. If information is missing, use empty string "".
+"""
+            
+            try:
+                # Call Gemini API with vision
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+                
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": mime_type,
+                                    "data": base64_content
+                                }
+                            }
+                        ]
+                    }],
+                    "generationConfig": {
+                        "temperature": 0.1,
+                        "maxOutputTokens": 4096
+                    }
+                }
+                
+                response = requests.post(url, json=payload, timeout=60)
+                response.raise_for_status()
+                
+                result = response.json()
+                ai_text = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                
+                # Extract JSON from response
+                import re
+                json_match = re.search(r'\[.*\]', ai_text, re.DOTALL)
+                if json_match:
+                    events_json = json_match.group(0)
+                    events = json.loads(events_json)
+                    return {"events": events, "source": "ai_extraction", "count": len(events)}
+                else:
+                    raise ValueError("No valid JSON found in AI response")
+                
+            except Exception as e:
+                print(f"AI extraction error: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to extract events from file: {str(e)}"
+                )
+        
+        raise HTTPException(status_code=400, detail="Unsupported file processing")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Calendar extraction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")

@@ -522,6 +522,40 @@ async def my_bookings(current_user = Depends(auth.get_current_user)):
         if 'cursor' in locals(): cursor.close()
         if 'connection' in locals(): connection.close()
 
+
+@router.get("/rooms/all-faculty-bookings")
+async def all_faculty_bookings(current_user = Depends(auth.get_current_user)):
+    """Get all faculty room bookings - visible to all faculty members"""
+    # Only faculty and admin can view all faculty bookings
+    if current_user.get("role") not in ["faculty", "admin"]:
+        raise HTTPException(status_code=403, detail="Only faculty can view faculty bookings")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_rooms_tables(cursor)
+        
+        cursor.execute(
+            """
+            SELECT rb.*, r.room_number, r.room_name, r.building, r.capacity,
+                   u.full_name as booked_by_name, u.email as booked_by_email
+            FROM room_bookings rb
+            JOIN rooms r ON rb.room_id = r.id
+            LEFT JOIN users u ON rb.booked_by = u.id
+            WHERE rb.booked_by_type = 'faculty'
+              AND rb.status IN ('approved', 'pending')
+              AND (rb.booking_date > CURDATE() 
+                   OR (rb.booking_date = CURDATE() AND rb.end_time > CURTIME()))
+            ORDER BY rb.booking_date ASC, rb.start_time ASC
+            LIMIT 500
+            """,
+        )
+        bookings = cursor.fetchall()
+        return {"bookings": bookings, "total": len(bookings)}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
 @router.post("/rooms/bookings/{booking_id}/cancel")
 async def cancel_booking(booking_id: int, current_user = Depends(auth.get_current_user)):
     """Cancel a room booking. Allowed for creator or admin."""

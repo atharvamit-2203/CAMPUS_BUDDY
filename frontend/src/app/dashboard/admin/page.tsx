@@ -73,6 +73,7 @@ import { canteenAPI } from '@/services/api';
 import AdminUserManagement from '@/components/AdminUserManagement';
 import ClubCalendar from '@/components/ClubCalendar';
 import TimeParsingTest from '@/components/TimeParsingTest';
+import EventApprovalList from '@/components/EventApprovalList';
 
 const AdminDashboard = () => {
   const { user, isAuthenticated, isLoading, setIntendedRoute } = useAuth();
@@ -106,6 +107,11 @@ const AdminDashboard = () => {
   const [staff, setStaff] = useState<any[]>([]);
   const [promoteUserId, setPromoteUserId] = useState<string>('');
   const [orders, setOrders] = useState<any[]>([]);
+  const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
+
+  const handleApprovalRefresh = () => {
+    setApprovalRefreshKey(prev => prev + 1);
+  };
 
   const loadCanteen = useCallback(async () => {
     try {
@@ -712,6 +718,7 @@ const AdminDashboard = () => {
               {[
                 { id: 'overview', label: 'Overview', icon: TrendingUp },
                 { id: 'users', label: 'Users', icon: Users },
+                { id: 'event-approvals', label: 'Event Approvals', icon: CheckCircle },
                 { id: 'timetables', label: 'Timetables', icon: Clock },
                 { id: 'canteen', label: 'Canteen', icon: Database },
                 { id: 'admin-roles', label: 'Admin Roles', icon: Shield },
@@ -741,6 +748,7 @@ const AdminDashboard = () => {
         {/* Content */}
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'users' && <AdminUserManagement />}
+        {activeTab === 'event-approvals' && <EventApprovalList key={approvalRefreshKey} isAdmin={true} onRefresh={handleApprovalRefresh} />}
         {activeTab === 'timetables' && renderTimetables()}
         {activeTab === 'canteen' && renderCanteen()}
         {activeTab === 'admin-roles' && renderAdmins()}

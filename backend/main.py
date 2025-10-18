@@ -73,7 +73,8 @@ from clubs_api import (
 # Import club events API
 from club_events_api import (
     create_club_event, get_club_events, get_all_club_events, approve_club_event,
-    create_club_timeline, get_club_timeline, register_for_event,
+    create_club_timeline, get_club_timeline, update_club_timeline, delete_club_timeline,
+    sync_timeline_to_events, register_for_event, bulk_import_calendar_events,
     get_student_council_dashboard, mark_student_council
 )
 
@@ -292,6 +293,14 @@ def _ensure_canteen_tables(cursor):
         pass
     try:
         cursor.execute("ALTER TABLE canteen_orders ADD COLUMN status VARCHAR(50) DEFAULT 'queued'")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE canteen_orders ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE canteen_orders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
     except Exception:
         pass
     try:
@@ -2742,12 +2751,13 @@ async def canteen_place_order(payload: dict, current_user = Depends(auth.get_cur
         cursor = connection.cursor(dictionary=True)
         _ensure_canteen_tables(cursor)
         qr = token_hex(16)
+        order_token = token_hex(16)  # Generate order token for payment processing
         cursor.execute(
             """
-            INSERT INTO canteen_orders (user_id, total_amount, payment_method, payment_status, status, qr_token)
-            VALUES (%s, %s, %s, %s, 'queued', %s)
+            INSERT INTO canteen_orders (user_id, total_amount, payment_method, payment_status, status, qr_token, order_token)
+            VALUES (%s, %s, %s, %s, 'queued', %s, %s)
             """,
-            (current_user["id"], total_amount, payment_method, payment_status, qr)
+            (current_user["id"], total_amount, payment_method, payment_status, qr, order_token)
         )
         order_id = cursor.lastrowid
         # items
@@ -2761,7 +2771,14 @@ async def canteen_place_order(payload: dict, current_user = Depends(auth.get_cur
             )
         connection.commit()
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=CANTEEN_{qr}"
-        return {"order_id": order_id, "qr_token": qr, "qr_url": qr_url, "status": "queued", "payment_status": payment_status}
+        return {
+            "order_id": order_id, 
+            "qr_token": qr, 
+            "order_token": order_token,  # Return order token for payment
+            "qr_url": qr_url, 
+            "status": "queued", 
+            "payment_status": payment_status
+        }
     except mysql.connector.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:
@@ -2786,11 +2803,68 @@ async def list_canteen_orders(status: Optional[str] = None, current_user = Depen
         if 'cursor' in locals(): cursor.close()
         if 'connection' in locals(): connection.close()
 
+
+@app.get("/canteen/staff/orders")
+async def get_staff_canteen_orders(
+    payment_status: Optional[str] = None,
+    current_user = Depends(auth.get_current_user)
+):
+    """Get all paid canteen orders for staff verification - visible to staff/faculty/admin/organization"""
+    # Only staff can view all orders
+    if current_user.get("role") not in ["admin", "faculty", "organization", "staff", "canteen_staff"]:
+        raise HTTPException(status_code=403, detail="Staff only - requires staff, faculty, admin, or organization role")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_canteen_tables(cursor)
+        
+        # Get orders with user details
+        sql = """
+            SELECT co.*, 
+                   u.full_name as student_name, 
+                   u.email as student_email,
+                   u.student_id
+            FROM canteen_orders co
+            LEFT JOIN users u ON co.user_id = u.id
+            WHERE 1=1
+        """
+        params: List = []
+        
+        # Filter by payment status if provided
+        if payment_status:
+            sql += " AND co.payment_status = %s"
+            params.append(payment_status)
+        else:
+            # By default, show only paid orders that need verification
+            sql += " AND co.payment_status = 'paid'"
+        
+        sql += " ORDER BY co.id DESC LIMIT 500"
+        
+        cursor.execute(sql, tuple(params))
+        orders = cursor.fetchall()
+        
+        # Get order items for each order
+        for order in orders:
+            cursor.execute(
+                """
+                SELECT * FROM canteen_order_items 
+                WHERE order_id = %s
+                """,
+                (order['id'],)
+            )
+            order['items'] = cursor.fetchall()
+        
+        return {"orders": orders, "total": len(orders)}
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
 @app.post("/canteen/orders/{order_id}/status")
 async def canteen_update_status(order_id: int, payload: dict, current_user = Depends(auth.get_current_user)):
-    # Allow admin or canteen admin (for demo, allow admin role)
-    if current_user.get("role") not in ["admin", "faculty", "organization", "student"]:
-        raise HTTPException(status_code=403, detail="Unauthorized")
+    # Allow staff to update order status
+    if current_user.get("role") not in ["admin", "faculty", "organization", "staff", "canteen_staff"]:
+        raise HTTPException(status_code=403, detail="Staff access required")
     new_status = (payload or {}).get("status")
     if new_status not in ["queued","preparing","ready","served","cancelled"]:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -2818,9 +2892,9 @@ async def canteen_update_status(order_id: int, payload: dict, current_user = Dep
 @app.post("/canteen/scan")
 async def canteen_scan(payload: dict, current_user = Depends(auth.get_current_user)):
     """Enhanced canteen QR scanning for payment and pickup"""
-    # Allow canteen staff (admin/faculty/organization for demo)
-    if current_user.get("role") not in ["admin", "faculty", "organization"]:
-        raise HTTPException(status_code=403, detail="Staff only")
+    # Allow canteen staff
+    if current_user.get("role") not in ["admin", "faculty", "organization", "staff", "canteen_staff"]:
+        raise HTTPException(status_code=403, detail="Staff access required")
     
     qr_data = (payload or {}).get("qr_data") or (payload or {}).get("qr_token")
     if not qr_data:
@@ -6300,6 +6374,26 @@ async def get_club_timeline_endpoint(club_id: int, current_user = Depends(auth.g
     """Get recurring timeline for a club"""
     return await get_club_timeline(club_id, current_user)
 
+@app.put("/clubs/{club_id}/timeline/{timeline_id}")
+async def update_club_timeline_endpoint(club_id: int, timeline_id: int, timeline_data: dict, current_user = Depends(auth.get_current_user)):
+    """Update a recurring activity in club timeline"""
+    return await update_club_timeline(club_id, timeline_id, timeline_data, current_user)
+
+@app.delete("/clubs/{club_id}/timeline/{timeline_id}")
+async def delete_club_timeline_endpoint(club_id: int, timeline_id: int, current_user = Depends(auth.get_current_user)):
+    """Delete a recurring activity from club timeline"""
+    return await delete_club_timeline(club_id, timeline_id, current_user)
+
+@app.post("/clubs/{club_id}/timeline/sync-events")
+async def sync_timeline_to_events_endpoint(club_id: int, sync_data: dict, current_user = Depends(auth.get_current_user)):
+    """Convert timetable entries to recurring events"""
+    return await sync_timeline_to_events(club_id, sync_data, current_user)
+
+@app.post("/clubs/{club_id}/calendar/bulk-import")
+async def bulk_import_calendar_events_endpoint(club_id: int, events_data: dict, current_user = Depends(auth.get_current_user)):
+    """Bulk import calendar events from uploaded file"""
+    return bulk_import_calendar_events(club_id, events_data, current_user)
+
 @app.post("/clubs/events/{event_id}/register")
 async def register_for_event_endpoint(event_id: int, current_user = Depends(auth.get_current_user)):
     """Register for a club event"""
@@ -6421,6 +6515,564 @@ async def get_upcoming_events_endpoint(
 ):
     """Get upcoming events from all clubs the user has access to"""
     return await get_upcoming_events_all_clubs(current_user, days_ahead, limit)
+
+
+# ============================================================================
+# EVENT APPROVAL SYSTEM - Organization requests approval from Admin
+# ============================================================================
+
+def _ensure_event_approval_table(cursor):
+    """Create event approval request table if not exists"""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS event_approval_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            organization_id INT NOT NULL,
+            event_name VARCHAR(255) NOT NULL,
+            event_type VARCHAR(100) NOT NULL,
+            event_description TEXT,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            venue VARCHAR(255),
+            expected_attendees INT,
+            budget_required DECIMAL(10,2),
+            resources_needed TEXT,
+            materials_needed TEXT,
+            staff_required INT,
+            volunteers_required INT,
+            additional_notes TEXT,
+            status ENUM('pending', 'approved', 'rejected', 'cancelled') DEFAULT 'pending',
+            submitted_by INT NOT NULL,
+            reviewed_by INT,
+            review_notes TEXT,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_organization (organization_id),
+            INDEX idx_status (status),
+            INDEX idx_submitted_by (submitted_by),
+            FOREIGN KEY (submitted_by) REFERENCES users(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """)
+
+
+@app.post("/events/approval-request")
+async def create_event_approval_request(
+    request_data: dict,
+    current_user = Depends(auth.get_current_user)
+):
+    """
+    Organization submits a large event for admin approval
+    Required fields: event_name, event_type, event_description, start_date, end_date, 
+                     expected_attendees, budget_required
+    """
+    if current_user.get("role") != "organization":
+        raise HTTPException(status_code=403, detail="Only organizations can submit event approval requests")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        # Get organization_id from user's organization membership
+        cursor.execute("""
+            SELECT organization_id FROM organization_members 
+            WHERE user_id = %s AND role IN ('admin', 'president', 'vice_president')
+            LIMIT 1
+        """, (current_user["id"],))
+        org_result = cursor.fetchone()
+        
+        if not org_result:
+            raise HTTPException(status_code=403, detail="You must be an organization admin to submit approval requests")
+        
+        organization_id = org_result["organization_id"]
+        
+        # Validate required fields
+        required_fields = ["event_name", "event_type", "event_description", "start_date", "end_date", 
+                          "expected_attendees", "budget_required"]
+        for field in required_fields:
+            if field not in request_data or not request_data[field]:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Insert approval request
+        cursor.execute("""
+            INSERT INTO event_approval_requests (
+                organization_id, event_name, event_type, event_description,
+                start_date, end_date, venue, expected_attendees, budget_required,
+                resources_needed, materials_needed, staff_required, volunteers_required,
+                additional_notes, submitted_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            organization_id,
+            request_data["event_name"],
+            request_data["event_type"],
+            request_data["event_description"],
+            request_data["start_date"],
+            request_data["end_date"],
+            request_data.get("venue"),
+            request_data["expected_attendees"],
+            request_data["budget_required"],
+            request_data.get("resources_needed"),
+            request_data.get("materials_needed"),
+            request_data.get("staff_required", 0),
+            request_data.get("volunteers_required", 0),
+            request_data.get("additional_notes"),
+            current_user["id"]
+        ))
+        
+        request_id = cursor.lastrowid
+        
+        # Notify all admins
+        cursor.execute("SELECT id FROM users WHERE role = 'admin'")
+        admins = cursor.fetchall()
+        
+        for admin in admins:
+            _notify_user(
+                cursor,
+                admin["id"],
+                "New Event Approval Request",
+                f"Organization has requested approval for '{request_data['event_name']}' event",
+                category="event_approval",
+                created_by=current_user["id"]
+            )
+        
+        connection.commit()
+        
+        return {
+            "message": "Event approval request submitted successfully",
+            "request_id": request_id,
+            "status": "pending"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating event approval request: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+
+@app.get("/events/approval-requests")
+async def get_event_approval_requests(
+    status: Optional[str] = None,
+    organization_id: Optional[int] = None,
+    current_user = Depends(auth.get_current_user)
+):
+    """
+    Get event approval requests
+    - Organizations see their own requests
+    - Admins see all requests
+    """
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        sql = """
+            SELECT ear.*, 
+                   o.name as organization_name,
+                   u.full_name as submitted_by_name,
+                   u.email as submitted_by_email,
+                   r.full_name as reviewed_by_name
+            FROM event_approval_requests ear
+            LEFT JOIN organizations o ON ear.organization_id = o.id
+            LEFT JOIN users u ON ear.submitted_by = u.id
+            LEFT JOIN users r ON ear.reviewed_by = r.id
+            WHERE 1=1
+        """
+        params = []
+        
+        # Role-based filtering
+        if current_user.get("role") == "organization":
+            # Get user's organization
+            cursor.execute("""
+                SELECT organization_id FROM organization_members 
+                WHERE user_id = %s
+                LIMIT 1
+            """, (current_user["id"],))
+            org_result = cursor.fetchone()
+            
+            if org_result:
+                sql += " AND ear.organization_id = %s"
+                params.append(org_result["organization_id"])
+            else:
+                return {"requests": [], "total": 0}
+        
+        elif current_user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Filter by status
+        if status:
+            sql += " AND ear.status = %s"
+            params.append(status)
+        
+        # Filter by organization_id (admin only)
+        if organization_id and current_user.get("role") == "admin":
+            sql += " AND ear.organization_id = %s"
+            params.append(organization_id)
+        
+        sql += " ORDER BY ear.submitted_at DESC"
+        
+        cursor.execute(sql, tuple(params))
+        requests = cursor.fetchall()
+        
+        return {"requests": requests, "total": len(requests)}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching event approval requests: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+
+@app.get("/events/approval-requests/{request_id}")
+async def get_event_approval_request_detail(
+    request_id: int,
+    current_user = Depends(auth.get_current_user)
+):
+    """Get detailed information about a specific approval request"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        cursor.execute("""
+            SELECT ear.*, 
+                   o.name as organization_name,
+                   o.description as organization_description,
+                   u.full_name as submitted_by_name,
+                   u.email as submitted_by_email,
+                   u.phone as submitted_by_phone,
+                   r.full_name as reviewed_by_name
+            FROM event_approval_requests ear
+            LEFT JOIN organizations o ON ear.organization_id = o.id
+            LEFT JOIN users u ON ear.submitted_by = u.id
+            LEFT JOIN users r ON ear.reviewed_by = r.id
+            WHERE ear.id = %s
+        """, (request_id,))
+        
+        request = cursor.fetchone()
+        
+        if not request:
+            raise HTTPException(status_code=404, detail="Request not found")
+        
+        # Check permissions
+        if current_user.get("role") == "organization":
+            cursor.execute("""
+                SELECT organization_id FROM organization_members 
+                WHERE user_id = %s
+                LIMIT 1
+            """, (current_user["id"],))
+            org_result = cursor.fetchone()
+            
+            if not org_result or org_result["organization_id"] != request["organization_id"]:
+                raise HTTPException(status_code=403, detail="Access denied")
+        
+        elif current_user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        return request
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching request detail: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+
+@app.post("/events/approval-requests/{request_id}/review")
+async def review_event_approval_request(
+    request_id: int,
+    review_data: dict,
+    current_user = Depends(auth.get_current_user)
+):
+    """
+    Admin reviews (approves/rejects) an event approval request
+    Required: status ('approved' or 'rejected'), review_notes
+    """
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can review approval requests")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        # Validate review data
+        if "status" not in review_data or review_data["status"] not in ["approved", "rejected"]:
+            raise HTTPException(status_code=400, detail="Status must be 'approved' or 'rejected'")
+        
+        # Get the request
+        cursor.execute("""
+            SELECT ear.*, o.name as organization_name
+            FROM event_approval_requests ear
+            LEFT JOIN organizations o ON ear.organization_id = o.id
+            WHERE ear.id = %s
+        """, (request_id,))
+        
+        request = cursor.fetchone()
+        
+        if not request:
+            raise HTTPException(status_code=404, detail="Request not found")
+        
+        if request["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Request has already been reviewed")
+        
+        # Update request
+        cursor.execute("""
+            UPDATE event_approval_requests 
+            SET status = %s, reviewed_by = %s, review_notes = %s, reviewed_at = NOW()
+            WHERE id = %s
+        """, (
+            review_data["status"],
+            current_user["id"],
+            review_data.get("review_notes", ""),
+            request_id
+        ))
+        
+        # Notify the submitter
+        notification_title = f"Event Approval {review_data['status'].title()}"
+        notification_message = f"Your event '{request['event_name']}' has been {review_data['status']}."
+        if review_data.get("review_notes"):
+            notification_message += f"\n\nAdmin notes: {review_data['review_notes']}"
+        
+        _notify_user(
+            cursor,
+            request["submitted_by"],
+            notification_title,
+            notification_message,
+            category="event_approval",
+            created_by=current_user["id"]
+        )
+        
+        # Notify all organization admins
+        cursor.execute("""
+            SELECT user_id FROM organization_members 
+            WHERE organization_id = %s AND role IN ('admin', 'president', 'vice_president')
+        """, (request["organization_id"],))
+        
+        org_admins = cursor.fetchall()
+        for admin in org_admins:
+            if admin["user_id"] != request["submitted_by"]:
+                _notify_user(
+                    cursor,
+                    admin["user_id"],
+                    notification_title,
+                    notification_message,
+                    category="event_approval",
+                    created_by=current_user["id"]
+                )
+        
+        connection.commit()
+        
+        return {
+            "message": f"Request {review_data['status']} successfully",
+            "request_id": request_id,
+            "status": review_data["status"]
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reviewing request: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+
+@app.put("/events/approval-requests/{request_id}")
+async def update_event_approval_request(
+    request_id: int,
+    update_data: dict,
+    current_user = Depends(auth.get_current_user)
+):
+    """Organization can update their pending request"""
+    if current_user.get("role") != "organization":
+        raise HTTPException(status_code=403, detail="Only organizations can update requests")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        # Get request and verify ownership
+        cursor.execute("SELECT * FROM event_approval_requests WHERE id = %s", (request_id,))
+        request = cursor.fetchone()
+        
+        if not request:
+            raise HTTPException(status_code=404, detail="Request not found")
+        
+        if request["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Cannot update a reviewed request")
+        
+        # Verify organization membership
+        cursor.execute("""
+            SELECT organization_id FROM organization_members 
+            WHERE user_id = %s
+            LIMIT 1
+        """, (current_user["id"],))
+        org_result = cursor.fetchone()
+        
+        if not org_result or org_result["organization_id"] != request["organization_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Build update query
+        update_fields = []
+        params = []
+        
+        allowed_fields = [
+            "event_name", "event_type", "event_description", "start_date", "end_date",
+            "venue", "expected_attendees", "budget_required", "resources_needed",
+            "materials_needed", "staff_required", "volunteers_required", "additional_notes"
+        ]
+        
+        for field in allowed_fields:
+            if field in update_data:
+                update_fields.append(f"{field} = %s")
+                params.append(update_data[field])
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        
+        params.append(request_id)
+        sql = f"UPDATE event_approval_requests SET {', '.join(update_fields)} WHERE id = %s"
+        
+        cursor.execute(sql, tuple(params))
+        connection.commit()
+        
+        return {"message": "Request updated successfully", "request_id": request_id}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating request: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+
+@app.delete("/events/approval-requests/{request_id}")
+async def cancel_event_approval_request(
+    request_id: int,
+    current_user = Depends(auth.get_current_user)
+):
+    """Organization can cancel their pending request"""
+    if current_user.get("role") != "organization":
+        raise HTTPException(status_code=403, detail="Only organizations can cancel requests")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        # Get request and verify ownership
+        cursor.execute("SELECT * FROM event_approval_requests WHERE id = %s", (request_id,))
+        request = cursor.fetchone()
+        
+        if not request:
+            raise HTTPException(status_code=404, detail="Request not found")
+        
+        if request["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Cannot cancel a reviewed request")
+        
+        # Verify organization membership
+        cursor.execute("""
+            SELECT organization_id FROM organization_members 
+            WHERE user_id = %s
+            LIMIT 1
+        """, (current_user["id"],))
+        org_result = cursor.fetchone()
+        
+        if not org_result or org_result["organization_id"] != request["organization_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Mark as cancelled
+        cursor.execute(
+            "UPDATE event_approval_requests SET status = 'cancelled' WHERE id = %s",
+            (request_id,)
+        )
+        
+        connection.commit()
+        
+        return {"message": "Request cancelled successfully", "request_id": request_id}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling request: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
+
+
+@app.get("/admin/event-approvals/statistics")
+async def get_event_approval_statistics(
+    current_user = Depends(auth.get_current_user)
+):
+    """Get statistics about event approval requests - Admin only"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_event_approval_table(cursor)
+        
+        # Get counts by status
+        cursor.execute("""
+            SELECT status, COUNT(*) as count
+            FROM event_approval_requests
+            GROUP BY status
+        """)
+        status_counts = {row["status"]: row["count"] for row in cursor.fetchall()}
+        
+        # Get total budget requested
+        cursor.execute("""
+            SELECT 
+                SUM(budget_required) as total_budget_requested,
+                SUM(CASE WHEN status = 'approved' THEN budget_required ELSE 0 END) as approved_budget,
+                SUM(CASE WHEN status = 'pending' THEN budget_required ELSE 0 END) as pending_budget
+            FROM event_approval_requests
+        """)
+        budget_stats = cursor.fetchone()
+        
+        # Get recent requests
+        cursor.execute("""
+            SELECT ear.*, o.name as organization_name, u.full_name as submitted_by_name
+            FROM event_approval_requests ear
+            LEFT JOIN organizations o ON ear.organization_id = o.id
+            LEFT JOIN users u ON ear.submitted_by = u.id
+            ORDER BY ear.submitted_at DESC
+            LIMIT 10
+        """)
+        recent_requests = cursor.fetchall()
+        
+        return {
+            "status_counts": status_counts,
+            "budget_statistics": budget_stats,
+            "recent_requests": recent_requests,
+            "pending_count": status_counts.get("pending", 0),
+            "approved_count": status_counts.get("approved", 0),
+            "rejected_count": status_counts.get("rejected", 0)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error fetching statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'connection' in locals(): connection.close()
 
 
 if __name__ == "__main__":

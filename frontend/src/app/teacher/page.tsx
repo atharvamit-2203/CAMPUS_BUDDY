@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AIDashboard from "@/components/AIDashboard";
+import AllFacultyBookings from "@/components/AllFacultyBookings";
+import StaffCanteenOrders from "@/components/StaffCanteenOrders";
 import { facultyAPI } from "@/services/roleBasedAPI";
 
 // TypeScript interfaces for faculty dashboard data
@@ -330,6 +332,8 @@ export default function FacultyDashboard() {
     { id: "assignments", label: "Assignments", icon: "📝", description: "Assignment tracking" },
     { id: "events", label: "Events", icon: "📅", description: "Event management" },
     { id: "timetable", label: "Timetable", icon: "🕐", description: "Schedule management" },
+    { id: "bookings", label: "Faculty Bookings", icon: "🏢", description: "Room bookings" },
+    { id: "staff-orders", label: "Staff Orders", icon: "🛒", description: "Canteen staff" },
     { id: "canteen", label: "Canteen", icon: "☕", description: "Canteen orders" },
     { id: "ai-insights", label: "AI Insights", icon: "🧠", description: "AI analytics" },
     ...(user?.email?.includes('head') ? [{ id: "committee", label: "Committee Management", icon: "🏛️", description: "Committee oversight" }] : [])
@@ -1292,6 +1296,20 @@ export default function FacultyDashboard() {
         {activeTab === "ai-insights" && (
           <div className="space-y-6">
             <AIDashboard userType="teacher" userId={1} />
+          </div>
+        )}
+
+        {/* Faculty Bookings Tab */}
+        {activeTab === "bookings" && (
+          <div className="space-y-6">
+            <AllFacultyBookings />
+          </div>
+        )}
+
+        {/* Staff Orders Tab */}
+        {activeTab === "staff-orders" && (
+          <div className="space-y-6">
+            <StaffCanteenOrders />
           </div>
         )}
       </main>

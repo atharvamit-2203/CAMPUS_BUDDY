@@ -768,3 +768,401 @@ async def mark_student_council(club_id: int, current_user):
             cursor.close()
         if 'connection' in locals():
             connection.close()
+
+async def update_club_timeline(club_id: int, timeline_id: int, timeline_data: dict, current_user):
+    """Update a recurring activity in club timeline"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_club_events_tables(cursor)
+        
+        # Check authorization
+        cursor.execute(
+            "SELECT id, name, created_by FROM clubs WHERE id = %s AND is_active = TRUE",
+            (club_id,)
+        )
+        club = cursor.fetchone()
+        
+        if not club:
+            raise HTTPException(status_code=404, detail="Club not found")
+        
+        is_club_admin = club["created_by"] == current_user["id"]
+        
+        if not (is_club_admin or current_user.get("role") in ["admin", "faculty"]):
+            raise HTTPException(status_code=403, detail="Not authorized to manage club timeline")
+        
+        # Check if timeline entry exists
+        cursor.execute(
+            "SELECT id FROM club_timeline WHERE id = %s AND club_id = %s",
+            (timeline_id, club_id)
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Timeline entry not found")
+        
+        # Parse timeline data
+        activity_name = timeline_data.get("activity_name")
+        description = timeline_data.get("description", "")
+        day_of_week = timeline_data.get("day_of_week")
+        start_time = timeline_data.get("start_time")
+        end_time = timeline_data.get("end_time")
+        venue = timeline_data.get("venue", "")
+        activity_type = timeline_data.get("activity_type", "other")
+        effective_from = timeline_data.get("effective_from")
+        effective_until = timeline_data.get("effective_until")
+        
+        if not all([activity_name, day_of_week, start_time, end_time]):
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        # Update timeline entry
+        cursor.execute(
+            """
+            UPDATE club_timeline 
+            SET activity_name = %s, description = %s, day_of_week = %s,
+                start_time = %s, end_time = %s, venue = %s, activity_type = %s,
+                effective_from = %s, effective_until = %s
+            WHERE id = %s AND club_id = %s
+            """,
+            (
+                activity_name, description, day_of_week,
+                start_time, end_time, venue, activity_type,
+                effective_from, effective_until, timeline_id, club_id
+            )
+        )
+        
+        connection.commit()
+        
+        return {
+            "message": "Timeline activity updated successfully",
+            "club_name": club["name"]
+        }
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+async def delete_club_timeline(club_id: int, timeline_id: int, current_user):
+    """Delete a recurring activity from club timeline"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_club_events_tables(cursor)
+        
+        # Check authorization
+        cursor.execute(
+            "SELECT id, name, created_by FROM clubs WHERE id = %s AND is_active = TRUE",
+            (club_id,)
+        )
+        club = cursor.fetchone()
+        
+        if not club:
+            raise HTTPException(status_code=404, detail="Club not found")
+        
+        is_club_admin = club["created_by"] == current_user["id"]
+        
+        if not (is_club_admin or current_user.get("role") in ["admin", "faculty"]):
+            raise HTTPException(status_code=403, detail="Not authorized to manage club timeline")
+        
+        # Soft delete (set is_active to FALSE)
+        cursor.execute(
+            """
+            UPDATE club_timeline 
+            SET is_active = FALSE
+            WHERE id = %s AND club_id = %s
+            """,
+            (timeline_id, club_id)
+        )
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Timeline entry not found")
+        
+        connection.commit()
+        
+        return {
+            "message": "Timeline activity deleted successfully",
+            "club_name": club["name"]
+        }
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+async def sync_timeline_to_events(club_id: int, sync_data: dict, current_user):
+    """Convert timetable entries to recurring events for the next N weeks"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        _ensure_club_events_tables(cursor)
+        
+        # Check authorization
+        cursor.execute(
+            "SELECT id, name, created_by, is_student_council FROM clubs WHERE id = %s AND is_active = TRUE",
+            (club_id,)
+        )
+        club = cursor.fetchone()
+        
+        if not club:
+            raise HTTPException(status_code=404, detail="Club not found")
+        
+        is_club_admin = club["created_by"] == current_user["id"]
+        
+        if not (is_club_admin or current_user.get("role") in ["admin", "faculty"]):
+            raise HTTPException(status_code=403, detail="Not authorized to manage club events")
+        
+        weeks = sync_data.get("weeks", 4)  # Default to 4 weeks
+        if weeks < 1 or weeks > 12:
+            raise HTTPException(status_code=400, detail="Weeks must be between 1 and 12")
+        
+        # Get active timeline entries
+        cursor.execute(
+            """
+            SELECT * FROM club_timeline 
+            WHERE club_id = %s AND is_active = TRUE
+            ORDER BY day_of_week, start_time
+            """,
+            (club_id,)
+        )
+        timeline_entries = cursor.fetchall()
+        
+        if not timeline_entries:
+            raise HTTPException(status_code=400, detail="No active timetable entries to sync")
+        
+        # Day mapping
+        day_map = {
+            'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+            'friday': 4, 'saturday': 5, 'sunday': 6
+        }
+        
+        events_created = 0
+        from datetime import datetime, timedelta
+        
+        # Student Council events are auto-approved
+        status = "approved" if club.get("is_student_council") else "pending_approval"
+        
+        today = datetime.now().date()
+        
+        for entry in timeline_entries:
+            # Check effective dates
+            effective_from = entry.get("effective_from") or today
+            effective_until = entry.get("effective_until") or (today + timedelta(weeks=weeks))
+            
+            target_day = day_map.get(entry["day_of_week"])
+            
+            # Find next occurrence of this day
+            days_ahead = target_day - today.weekday()
+            if days_ahead <= 0:  # Target day already happened this week
+                days_ahead += 7
+            
+            next_date = today + timedelta(days=days_ahead)
+            
+            # Create events for the next N weeks
+            for week in range(weeks):
+                event_date = next_date + timedelta(weeks=week)
+                
+                # Check if event_date is within effective range
+                if event_date < effective_from or event_date > effective_until:
+                    continue
+                
+                # Check if event already exists for this date and time
+                cursor.execute(
+                    """
+                    SELECT id FROM club_events 
+                    WHERE club_id = %s AND event_date = %s AND start_time = %s
+                    """,
+                    (club_id, event_date, entry["start_time"])
+                )
+                
+                if cursor.fetchone():
+                    continue  # Skip if event already exists
+                
+                # Create event
+                cursor.execute(
+                    """
+                    INSERT INTO club_events (
+                        club_id, title, description, event_date, start_time, end_time,
+                        venue, event_type, status, created_by, is_public
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        club_id,
+                        entry["activity_name"],
+                        entry["description"],
+                        event_date,
+                        entry["start_time"],
+                        entry["end_time"],
+                        entry["venue"],
+                        entry["activity_type"],
+                        status,
+                        current_user["id"],
+                        True
+                    )
+                )
+                events_created += 1
+        
+        connection.commit()
+        
+        # Send notification to Student Council if not auto-approved
+        if status == "pending_approval" and events_created > 0:
+            _notify_student_council(cursor, connection, club["name"], f"{events_created} recurring events", 0)
+        
+        return {
+            "message": f"Successfully created {events_created} events from timetable",
+            "events_created": events_created,
+            "club_name": club["name"],
+            "status": status
+        }
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()
+
+
+def bulk_import_calendar_events(club_id: int, events_data: dict, current_user):
+    """Bulk import calendar events from uploaded file"""
+    try:
+        connection = get_mysql_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        _ensure_club_events_tables(cursor)
+        
+        # Verify club exists and user has permission
+        cursor.execute("SELECT name, category FROM clubs WHERE id = %s", (club_id,))
+        club = cursor.fetchone()
+        
+        if not club:
+            raise HTTPException(status_code=404, detail="Club not found")
+        
+        # Check if user is club admin/faculty or student council
+        if not _has_club_permission(cursor, current_user, club_id):
+            raise HTTPException(status_code=403, detail="Not authorized for this club")
+        
+        events = events_data.get("events", [])
+        if not events:
+            raise HTTPException(status_code=400, detail="No events provided")
+        
+        # Determine auto-approval status
+        is_auto_approved = _should_auto_approve(cursor, current_user, club_id)
+        status = "approved" if is_auto_approved else "pending_approval"
+        
+        events_imported = 0
+        events_skipped = 0
+        errors = []
+        
+        for idx, event in enumerate(events):
+            try:
+                title = event.get("title", "").strip()
+                if not title:
+                    errors.append(f"Event {idx+1}: Missing title")
+                    continue
+                
+                # Parse and validate date
+                event_date_str = event.get("event_date", "").strip()
+                if not event_date_str:
+                    errors.append(f"Event {idx+1} ({title}): Missing date")
+                    continue
+                
+                try:
+                    event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    errors.append(f"Event {idx+1} ({title}): Invalid date format (use YYYY-MM-DD)")
+                    continue
+                
+                # Parse times
+                start_time_str = event.get("start_time", "10:00").strip()
+                end_time_str = event.get("end_time", "12:00").strip()
+                
+                try:
+                    start_time_obj = datetime.strptime(start_time_str, "%H:%M").time()
+                    end_time_obj = datetime.strptime(end_time_str, "%H:%M").time()
+                except ValueError:
+                    errors.append(f"Event {idx+1} ({title}): Invalid time format (use HH:MM)")
+                    continue
+                
+                # Check if event already exists
+                cursor.execute(
+                    """
+                    SELECT id FROM club_events 
+                    WHERE club_id = %s AND title = %s AND event_date = %s AND start_time = %s
+                    """,
+                    (club_id, title, event_date, start_time_obj)
+                )
+                
+                if cursor.fetchone():
+                    events_skipped += 1
+                    continue  # Skip duplicate
+                
+                # Insert event
+                description = event.get("description", "")
+                venue = event.get("venue", "")
+                event_type = event.get("event_type", "other").lower()
+                
+                # Validate event_type
+                valid_types = ['meeting', 'workshop', 'competition', 'seminar', 'social', 'recruitment', 'other']
+                if event_type not in valid_types:
+                    event_type = 'other'
+                
+                cursor.execute(
+                    """
+                    INSERT INTO club_events (
+                        club_id, title, description, event_date, start_time, end_time,
+                        venue, event_type, status, created_by, is_public
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        club_id,
+                        title,
+                        description,
+                        event_date,
+                        start_time_obj,
+                        end_time_obj,
+                        venue,
+                        event_type,
+                        status,
+                        current_user["id"],
+                        True
+                    )
+                )
+                events_imported += 1
+                
+            except Exception as e:
+                errors.append(f"Event {idx+1}: {str(e)}")
+                continue
+        
+        connection.commit()
+        
+        # Send notification to Student Council if not auto-approved
+        if status == "pending_approval" and events_imported > 0:
+            _notify_student_council(cursor, connection, club["name"], f"{events_imported} imported events", 0)
+        
+        result = {
+            "message": f"Successfully imported {events_imported} events",
+            "imported_count": events_imported,
+            "skipped_count": events_skipped,
+            "error_count": len(errors),
+            "status": status,
+            "club_name": club["name"]
+        }
+        
+        if errors:
+            result["errors"] = errors[:10]  # Return first 10 errors
+        
+        return result
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'connection' in locals():
+            connection.close()

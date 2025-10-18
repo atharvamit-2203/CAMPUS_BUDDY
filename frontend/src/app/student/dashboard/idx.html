@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Ticket Booking</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Boxicons for icons -->
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <!-- Custom CSS for styling and animations -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f5ff; /* Light blue background */
+        }
+        .header-gradient {
+            background: linear-gradient(to bottom, #dfe9f5, #f0f5ff);
+        }
+        .dropdown-content, .calendar-popup, .city-popup {
+            display: none;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            transform: translateY(-10px);
+        }
+        .dropdown-content.show, .calendar-popup.show, .city-popup.show {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .page {
+            display: none; /* Pages are hidden by default */
+        }
+        .page.active {
+            display: block; /* Active page is visible */
+        }
+        .action-btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        /* Custom styles for dropdown items */
+        .dropdown-link {
+            display: flex;
+            align-items: center;
+        }
+        .dropdown-link i {
+            transition: color 0.2s ease;
+        }
+        .dropdown-link:hover i {
+            color: #3b82f6;
+        }
+        /* Calendar Styles */
+        .calendar-day:not(.disabled):hover {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+        }
+        .calendar-day.selected {
+            background-color: #3b82f6;
+            color: white;
+            font-weight: bold;
+        }
+        .calendar-day.today {
+            border: 1px solid #3b82f6;
+        }
+        /* City Popup Styles */
+        .city-item:hover {
+            background-color: #eff6ff;
+        }
+        /* Mobile Menu */
+        .mobile-menu {
+            transition: max-height 0.3s ease-out;
+            max-height: 0;
+            overflow: hidden;
+        }
+        .mobile-menu.open {
+            max-height: 500px; /* Adjust as needed */
+        }
+        /* Loader Style */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-blue-50">
+
+    <!-- Header Section -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4">
+            <nav class="flex items-center justify-between h-20">
+                <a href="#" class="flex items-center space-x-2 page-link" data-page="home-page">
+                     <i class='bx bxs-purchase-tag-alt text-4xl text-blue-600'></i>
+                     <span class="text-xl font-bold text-gray-800">Online Ticket Booking</span>
+                </a>
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <button class="flex items-center text-gray-600 hover:text-blue-600 font-medium page-link" data-page="bookings-page">
+                        <i class='bx bx-book-content text-xl mr-1'></i> Bookings
+                    </button>
+                    <button class="flex items-center text-gray-600 hover:text-blue-600 font-medium page-link" data-page="help-page">
+                        <i class='bx bx-help-circle text-xl mr-1'></i> Help
+                    </button>
+                    <div class="relative">
+                       <button id="account-btn" class="flex items-center text-gray-600 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium">
+                           <i class='bx bx-user-circle text-xl mr-1'></i> Account <i class='bx bx-chevron-down text-xl ml-1'></i>
+                       </button>
+                       <!-- Account Dropdown -->
+                       <div id="account-dropdown" class="dropdown-content absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl py-1">
+                            <a href="#" class="block px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 page-link dropdown-link" data-page="cancel-ticket-page">
+                                <i class='bx bx-x-circle text-gray-500 mr-3 text-xl'></i> Cancel Ticket
+                            </a>
+                            <a href="#" class="block px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 page-link dropdown-link" data-page="change-date-page">
+                                <i class='bx bx-transfer-alt text-gray-500 mr-3 text-xl'></i> Change Travel Date
+                            </a>
+                            <a href="#" class="block px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 page-link dropdown-link" data-page="show-ticket-page">
+                                <i class='bx bx-show text-gray-500 mr-3 text-xl'></i> Show My Ticket
+                            </a>
+                             <a href="#" class="block px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 page-link dropdown-link" data-page="locate-bus-page">
+                                <i class='bx bx-current-location text-gray-500 mr-3 text-xl'></i> Locate the Bus
+                            </a>
+                            <hr class="my-1">
+                            <a href="#" class="block px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 page-link dropdown-link" data-page="login-page">
+                                <i class='bx bx-log-in-circle text-gray-500 mr-3 text-xl'></i> Login/Sign Up
+                            </a>
+                       </div>
+                    </div>
+                </div>
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <button id="mobile-menu-btn" class="text-gray-700 focus:outline-none"><i class='bx bx-menu text-3xl'></i></button>
+                </div>
+            </nav>
+            <!-- Mobile Menu -->
+            <div id="mobile-menu" class="mobile-menu md:hidden bg-white">
+                <a href="#" class="block py-3 px-4 text-gray-700 hover:bg-blue-50 page-link" data-page="bookings-page">Bookings</a>
+                <a href="#" class="block py-3 px-4 text-gray-700 hover:bg-blue-50 page-link" data-page="help-page">Help</a>
+                <a href="#" class="block py-3 px-4 text-gray-700 hover:bg-blue-50 page-link" data-page="login-page">Login/Sign Up</a>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main>
+        <!-- Home Page -->
+        <div id="home-page" class="page active">
+            <div class="header-gradient pt-12 pb-24">
+                <div class="container mx-auto px-4 relative">
+                    
+                    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg mt-8 p-4 z-10 relative">
+                         <div class="flex items-center justify-center py-3 px-6 text-lg font-semibold w-full text-blue-600 border-b-2 border-blue-100">
+                            <i class='bx bxs-bus mr-2'></i>Bus Tickets
+                        </div>
+                        
+                        <div class="pt-6">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border rounded-lg p-4 items-center">
+                                <div class="form-input relative">
+                                    <label for="from" class="text-sm font-medium text-gray-500 flex items-center"><i class='bx bx-trip text-xl mr-1'></i>From</label>
+                                    <input type="text" id="from" placeholder="Source City" class="w-full text-lg font-semibold text-gray-900 border-none focus:ring-0 p-0 cursor-pointer" readonly>
+                                </div>
+                                <div class="form-input relative">
+                                    <label for="to" class="text-sm font-medium text-gray-500 flex items-center"><i class='bx bx-trip text-xl mr-1'></i>To</label>
+                                    <input type="text" id="to" placeholder="Destination City" class="w-full text-lg font-semibold text-gray-900 border-none focus:ring-0 p-0 cursor-pointer" readonly>
+                                </div>
+                                <div class="form-input relative">
+                                    <label for="journey-date-display" class="text-sm font-medium text-gray-500 flex items-center"><i class='bx bx-calendar text-xl mr-1'></i>Date of Journey</label>
+                                    <input type="text" id="journey-date-display" class="w-full text-lg font-semibold text-gray-900 border-none focus:ring-0 p-0 bg-transparent cursor-pointer" readonly>
+                                    <input type="hidden" id="journey-date">
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-end mt-6">
+                                <button id="search-btn" class="bg-blue-600 text-white text-xl font-bold px-16 py-4 rounded-lg hover:bg-blue-700 action-btn">Search Buses</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- From City Popup -->
+                    <div id="from-popup" class="city-popup absolute bg-white rounded-lg shadow-xl z-20 w-80 p-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-gray-800">Popular Cities</h3>
+                            <button class="close-popup-btn text-gray-500 hover:text-gray-800">&times;</button>
+                        </div>
+                        <div id="from-city-list" class="space-y-1 max-h-60 overflow-y-auto"></div>
+                    </div>
+
+                    <!-- To City Popup -->
+                     <div id="to-popup" class="city-popup absolute bg-white rounded-lg shadow-xl z-20 w-80 p-4">
+                         <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-gray-800">Popular Cities</h3>
+                            <button class="close-popup-btn text-gray-500 hover:text-gray-800">&times;</button>
+                        </div>
+                        <div id="to-city-list" class="space-y-1 max-h-60 overflow-y-auto"></div>
+                    </div>
+
+                     <!-- Calendar Popup -->
+                    <div id="calendar-popup" class="calendar-popup absolute bg-white rounded-lg shadow-xl z-20 w-80 p-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <button id="prev-month" class="text-gray-600 hover:text-blue-600"><i class='bx bx-chevron-left text-2xl'></i></button>
+                            <div id="month-year" class="font-bold text-lg text-gray-800"></div>
+                            <button id="next-month" class="text-gray-600 hover:text-blue-600"><i class='bx bx-chevron-right text-2xl'></i></button>
+                        </div>
+                        <div class="grid grid-cols-7 text-center text-sm text-gray-500 mb-2">
+                            <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+                        </div>
+                        <div id="calendar-days" class="grid grid-cols-7 text-center"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Search Results Page -->
+        <div id="search-results-page" class="page">
+            <div class="container mx-auto px-4 py-16">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Available Buses</h2>
+                <p id="search-summary" class="text-gray-600 mb-8"></p>
+                <div id="loader" class="flex justify-center my-8 hidden">
+                    <div class="loader"></div>
+                </div>
+                <div id="bus-list" class="space-y-4">
+                    <!-- Bus results will be dynamically inserted here -->
+                </div>
+                <div id="no-results" class="text-center py-16 hidden">
+                     <i class='bx bx-search-alt-2 text-6xl text-gray-400'></i>
+                    <p class="text-xl text-gray-600 mt-4">No buses found for this route.</p>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Other Pages (Bookings, Cancel, etc.) -->
+        <div id="bookings-page" class="page">
+            <div class="container mx-auto px-4 py-16 text-center">
+                 <div class="max-w-2xl mx-auto bg-white p-12 rounded-2xl shadow-lg">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-4">Your Bookings</h2>
+                    <p class="text-lg text-gray-700">Please login to view your profile and booking details.</p>
+                    <button class="text-blue-600 font-bold mt-2 page-link" data-page="login-page">Login Now</button> or 
+                    <button class="text-blue-600 font-bold mt-2 page-link" data-page="home-page">Go to home page</button>
+                 </div>
+            </div>
+        </div>
+        <div id="cancel-ticket-page" class="page">
+             <div class="container mx-auto px-4 py-16">
+                 <div class="max-w-2xl mx-auto text-center">
+                    <h2 class="text-3xl font-bold text-gray-800">Cancel your Ticket</h2>
+                    <div class="bg-white p-8 rounded-2xl shadow-lg mt-8 text-left space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div><label class="font-medium text-gray-600">Enter Ticket No</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                             <div><label class="font-medium text-gray-600">Enter Mobile No</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                        </div>
+                        <button class="w-full bg-blue-600 text-white font-bold py-3 text-lg rounded-lg hover:bg-blue-700 action-btn">Select Passengers</button>
+                    </div>
+                 </div>
+            </div>
+        </div>
+        <div id="change-date-page" class="page">
+             <div class="container mx-auto px-4 py-16">
+                 <div class="max-w-2xl mx-auto text-center">
+                    <h2 class="text-3xl font-bold text-gray-800">Change Travel Date</h2>
+                    <p class="text-gray-600 mt-2">Verify your details, and Change Travel Date</p>
+                    <div class="bg-white p-8 rounded-2xl shadow-lg mt-8 text-left space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div><label class="font-medium text-gray-600">Ticket Number</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                            <div><label class="font-medium text-gray-600">Mobile Number</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                        </div>
+                        <button class="w-full bg-blue-600 text-white font-bold py-3 text-lg rounded-lg hover:bg-blue-700 action-btn">Search</button>
+                    </div>
+                 </div>
+            </div>
+        </div>
+        <div id="show-ticket-page" class="page">
+             <div class="container mx-auto px-4 py-16">
+                 <div class="max-w-2xl mx-auto text-center">
+                    <h2 class="text-3xl font-bold text-gray-800">Print Ticket</h2>
+                     <p class="text-gray-600 mt-2">Verify your details, and Print your tickets</p>
+                    <div class="bg-white p-8 rounded-2xl shadow-lg mt-8 text-left space-y-6">
+                       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div><label class="font-medium text-gray-600">Ticket Number</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                             <div><label class="font-medium text-gray-600">Mobile Number</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                       </div>
+                        <button class="w-full bg-blue-600 text-white font-bold py-3 text-lg rounded-lg hover:bg-blue-700 action-btn">Submit</button>
+                    </div>
+                 </div>
+            </div>
+        </div>
+        <div id="login-page" class="page">
+             <div class="container mx-auto px-4 py-16">
+                 <div class="max-w-md mx-auto">
+                     <h2 class="text-3xl font-bold text-gray-800 text-center">Login / Sign Up</h2>
+                     <div class="bg-white p-8 rounded-2xl shadow-lg mt-8 space-y-6">
+                        <input type="email" placeholder="Email Address or Mobile Number" class="w-full border border-gray-300 rounded-lg p-4 text-lg focus:ring-blue-500 focus:border-blue-500">
+                        <input type="password" placeholder="Password" class="w-full border border-gray-300 rounded-lg p-4 text-lg focus:ring-blue-500 focus:border-blue-500">
+                        <button class="w-full bg-blue-600 text-white font-bold py-3 text-lg rounded-lg hover:bg-blue-700 action-btn">Login</button>
+                    </div>
+                 </div>
+             </div>
+        </div>
+        <div id="locate-bus-page" class="page">
+            <div class="container mx-auto px-4 py-16">
+                 <div class="max-w-2xl mx-auto text-center">
+                     <h2 class="text-3xl font-bold text-gray-800">Locate Your Bus</h2>
+                      <p class="text-gray-600 mt-2">Enter your details to track your bus in real-time.</p>
+                      <div class="bg-white p-8 rounded-2xl shadow-lg mt-8 text-left space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div><label class="font-medium text-gray-600">Booking ID</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                            <div><label class="font-medium text-gray-600">Your Phone Number</label><input type="text" class="w-full mt-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-blue-500 focus:border-blue-500"></div>
+                        </div>
+                        <button class="w-full bg-blue-600 text-white font-bold py-3 text-lg rounded-lg hover:bg-blue-700 action-btn">Track Bus</button>
+                    </div>
+                 </div>
+            </div>
+        </div>
+        <div id="help-page" class="page">
+            <div class="container mx-auto px-4 py-16">
+                <div class="max-w-3xl mx-auto">
+                    <h2 class="text-3xl font-bold text-center text-gray-800">Help & Support</h2>
+                     <p class="text-center text-gray-600 mt-2 mb-8">We are here to help you with your queries.</p>
+                     <div class="space-y-4">
+                         <div class="bg-white p-6 rounded-lg shadow-sm">
+                             <h3 class="font-semibold text-lg text-gray-800">Booking & Ticketing</h3>
+                         </div>
+                         <div class="bg-white p-6 rounded-lg shadow-sm">
+                             <h3 class="font-semibold text-lg text-gray-800">Cancellations & Refunds</h3>
+                         </div>
+                         <div class="bg-white p-6 rounded-lg shadow-sm">
+                             <h3 class="font-semibold text-lg text-gray-800">Payments & Offers</h3>
+                         </div>
+                     </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Firebase SDK Scripts -->
+    <script type="module">
+        // Import necessary Firebase functions
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Firebase Configuration and Initialization ---
+        // These variables (__firebase_config, etc.) are automatically provided in the environment.
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        let db, auth;
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setLogLevel('debug'); // For more detailed logs in the console
+            console.log("Firebase Initialized Successfully");
+
+            // --- Firebase Authentication ---
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+                console.log("Signed in with custom token.");
+            } else {
+                await signInAnonymously(auth);
+                console.log("Signed in anonymously.");
+            }
+        } catch (error) {
+            console.error("Firebase initialization failed:", error);
+        }
+
+        // --- Frontend Logic (No changes from previous version) ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // All existing UI logic (popups, dropdowns, navigation) goes here.
+            // ... (The code from the previous step is assumed to be here)
+            const accountBtn = document.getElementById('account-btn');
+            const accountDropdown = document.getElementById('account-dropdown');
+            const pageLinks = document.querySelectorAll('.page-link');
+            const pages = document.querySelectorAll('.page');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const mobileMenu = document.getElementById('mobile-menu');
+            
+            accountBtn.addEventListener('click', (e) => { e.stopPropagation(); accountDropdown.classList.toggle('show'); });
+            mobileMenuBtn.addEventListener('click', () => { mobileMenu.classList.toggle('open'); });
+
+            function showPage(pageId) {
+                pages.forEach(page => page.classList.toggle('active', page.id === pageId));
+                accountDropdown.classList.remove('show');
+                mobileMenu.classList.remove('open');
+                window.scrollTo(0, 0);
+            }
+
+            pageLinks.forEach(link => {
+                link.addEventListener('click', (e) => { e.preventDefault(); const pageId = link.dataset.page; if (pageId) showPage(pageId); });
+            });
+
+            const fromInput = document.getElementById('from');
+            const toInput = document.getElementById('to');
+            const fromPopup = document.getElementById('from-popup');
+            const toPopup = document.getElementById('to-popup');
+            const fromCityList = document.getElementById('from-city-list');
+            const toCityList = document.getElementById('to-city-list');
+            
+            const cities = [
+                { name: 'Mumbai', state: 'Maharashtra' }, { name: 'Delhi', state: 'Delhi' },
+                { name: 'Bengaluru', state: 'Karnataka' }, { name: 'Chennai', state: 'Tamil Nadu' },
+                { name: 'Kolkata', state: 'West Bengal' }, { name: 'Hyderabad', state: 'Telangana' },
+                { name: 'Pune', state: 'Maharashtra' }, { name: 'Ahmedabad', state: 'Gujarat' },
+                { name: 'Jaipur', state: 'Rajasthan' }, { name: 'Lucknow', state: 'Uttar Pradesh' }
+            ];
+
+            function populateCityList(listElement, inputElement, popupElement) {
+                listElement.innerHTML = '';
+                cities.forEach(city => {
+                    const cityEl = document.createElement('div');
+                    cityEl.className = 'p-2 rounded-md cursor-pointer city-item flex justify-between items-center';
+                    cityEl.innerHTML = `<div><div class="font-semibold text-gray-800">${city.name}</div><div class="text-sm text-gray-500">${city.state}</div></div><i class='bx bx-chevron-right text-gray-400'></i>`;
+                    cityEl.addEventListener('click', () => { inputElement.value = city.name; popupElement.classList.remove('show'); });
+                    listElement.appendChild(cityEl);
+                });
+            }
+
+            function positionPopup(inputElement, popupElement) {
+                const rect = inputElement.getBoundingClientRect();
+                popupElement.style.top = `${rect.bottom + window.scrollY + 5}px`;
+                popupElement.style.left = `${rect.left + window.scrollX}px`;
+            }
+
+            fromInput.addEventListener('click', (e) => { e.stopPropagation(); positionPopup(fromInput, fromPopup); fromPopup.classList.add('show'); toPopup.classList.remove('show'); calendarPopup.classList.remove('show'); });
+            toInput.addEventListener('click', (e) => { e.stopPropagation(); positionPopup(toInput, toPopup); toPopup.classList.add('show'); fromPopup.classList.remove('show'); calendarPopup.classList.remove('show'); });
+
+            const dateDisplay = document.getElementById('journey-date-display');
+            const dateHidden = document.getElementById('journey-date');
+            const calendarPopup = document.getElementById('calendar-popup');
+            const monthYearEl = document.getElementById('month-year');
+            const calendarDaysEl = document.getElementById('calendar-days');
+            const prevMonthBtn = document.getElementById('prev-month');
+            const nextMonthBtn = document.getElementById('next-month');
+            
+            let currentDate = new Date();
+            let selectedDate = new Date();
+
+            function formatDate(date) { return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+            function generateCalendar(date) {
+                calendarDaysEl.innerHTML = '';
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const month = date.getMonth(); const year = date.getFullYear();
+                monthYearEl.textContent = `${date.toLocaleString('default', { month: 'long' })} ${year}`;
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                for (let i = 0; i < firstDay; i++) { calendarDaysEl.innerHTML += '<div></div>'; }
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const dayDate = new Date(year, month, i); dayDate.setHours(0,0,0,0);
+                    let classes = 'p-2 rounded-full cursor-pointer calendar-day'; let isDisabled = false;
+                    if (dayDate < today) { classes += ' text-gray-400 cursor-not-allowed disabled'; isDisabled = true; }
+                    if (dayDate.getTime() === today.getTime()) classes += ' today';
+                    if (dayDate.getTime() === selectedDate.getTime()) classes += ' selected';
+                    calendarDaysEl.innerHTML += `<div class="${classes}" data-date="${dayDate.toISOString()}" ${isDisabled ? 'disabled' : ''}>${i}</div>`;
+                }
+            }
+
+            dateDisplay.addEventListener('click', (e) => { e.stopPropagation(); positionPopup(dateDisplay, calendarPopup); calendarPopup.classList.toggle('show'); fromPopup.classList.remove('show'); toPopup.classList.remove('show'); });
+            prevMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); generateCalendar(currentDate); });
+            nextMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); generateCalendar(currentDate); });
+            calendarDaysEl.addEventListener('click', (e) => {
+                if (e.target.classList.contains('calendar-day') && !e.target.hasAttribute('disabled')) {
+                    selectedDate = new Date(e.target.dataset.date); selectedDate.setHours(0,0,0,0);
+                    dateDisplay.value = formatDate(selectedDate);
+                    dateHidden.value = selectedDate.toISOString().split('T')[0];
+                    calendarPopup.classList.remove('show');
+                    generateCalendar(currentDate);
+                }
+            });
+            
+            window.addEventListener('click', (e) => {
+                if (!e.target.closest('#account-btn') && !e.target.closest('#account-dropdown')) { accountDropdown.classList.remove('show'); }
+                if (!e.target.closest('#journey-date-display') && !e.target.closest('#calendar-popup')) { calendarPopup.classList.remove('show'); }
+                if (!e.target.closest('#from') && !e.target.closest('#from-popup')) { fromPopup.classList.remove('show'); }
+                if (!e.target.closest('#to') && !e.target.closest('#to-popup')) { toPopup.classList.remove('show'); }
+            });
+            document.querySelectorAll('.close-popup-btn').forEach(btn => { btn.addEventListener('click', (e) => { e.stopPropagation(); e.target.closest('.city-popup').classList.remove('show'); }); });
+            populateCityList(fromCityList, fromInput, fromPopup);
+            populateCityList(toCityList, toInput, toPopup);
+            dateDisplay.value = formatDate(selectedDate);
+            dateHidden.value = selectedDate.toISOString().split('T')[0];
+            generateCalendar(currentDate);
+
+            // --- Firestore Search Logic ---
+            const searchBtn = document.getElementById('search-btn');
+            const busListEl = document.getElementById('bus-list');
+            const loaderEl = document.getElementById('loader');
+            const noResultsEl = document.getElementById('no-results');
+            const searchSummaryEl = document.getElementById('search-summary');
+
+            async function searchBuses() {
+                if (!db) {
+                    console.error("Firestore is not initialized.");
+                    alert("Database connection failed. Please refresh the page.");
+                    return;
+                }
+                const fromCity = fromInput.value;
+                const toCity = toInput.value;
+                const journeyDate = dateHidden.value; // YYYY-MM-DD format
+
+                if (!fromCity || !toCity || !journeyDate) {
+                    alert("Please select source, destination, and date.");
+                    return;
+                }
+                
+                showPage('search-results-page');
+                loaderEl.classList.remove('hidden');
+                noResultsEl.classList.add('hidden');
+                busListEl.innerHTML = '';
+                searchSummaryEl.textContent = `Showing buses from ${fromCity} to ${toCity} on ${formatDate(new Date(journeyDate))}`;
+
+                try {
+                    // This is the Firestore query
+                    const busesRef = collection(db, `/artifacts/${appId}/public/data/buses`);
+                    const q = query(busesRef, 
+                        where("source", "==", fromCity),
+                        where("destination", "==", toCity),
+                        where("date", "==", journeyDate)
+                    );
+
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (querySnapshot.empty) {
+                        noResultsEl.classList.remove('hidden');
+                    } else {
+                        querySnapshot.forEach((doc) => {
+                            const bus = doc.data();
+                            const busCard = `
+                                <div class="bg-white rounded-lg shadow-md p-6 flex flex-col md:flex-row justify-between items-center">
+                                    <div>
+                                        <h3 class="text-xl font-bold text-gray-800">${bus.busName}</h3>
+                                        <p class="text-gray-500">${bus.busType}</p>
+                                    </div>
+                                    <div class="flex items-center space-x-4 my-4 md:my-0">
+                                        <div>
+                                            <p class="font-semibold text-lg">${bus.departureTime}</p>
+                                            <p class="text-sm text-gray-500">${bus.source}</p>
+                                        </div>
+                                        <i class='bx bx-right-arrow-alt text-2xl text-gray-400'></i>
+                                        <div>
+                                            <p class="font-semibold text-lg">${bus.arrivalTime}</p>
+                                            <p class="text-sm text-gray-500">${bus.destination}</p>
+                                        </div>
+                                    </div>
+                                    <div class="text-center">
+                                        <p class="text-2xl font-bold text-blue-600">₹${bus.price}</p>
+                                        <p class="text-sm text-green-600">${bus.seatsAvailable} seats available</p>
+                                    </div>
+                                    <button class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg mt-4 md:mt-0 action-btn">Book Now</button>
+                                </div>
+                            `;
+                            busListEl.innerHTML += busCard;
+                        });
+                    }
+                } catch (error) {
+                    console.error("Error searching for buses: ", error);
+                    noResultsEl.classList.remove('hidden');
+                    noResultsEl.textContent = "An error occurred while searching. Please try again."
+                } finally {
+                    loaderEl.classList.add('hidden');
+                }
+            }
+
+            searchBtn.addEventListener('click', searchBuses);
+        });
+    </script>
+
+</body>
+</html>

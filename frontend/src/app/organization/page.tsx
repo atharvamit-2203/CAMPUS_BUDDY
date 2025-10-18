@@ -25,6 +25,9 @@ import {
 } from 'lucide-react';
 import EventManagement from './event/page';
 import MeetingCalendar from './meeting/page';
+import ClubTimetable from '@/components/ClubTimetable';
+import CalendarUpload from '@/components/CalendarUpload';
+import OrganizationEventCalendar from '@/components/OrganizationEventCalendar';
 
 // Type definitions
 interface Event {
@@ -596,6 +599,7 @@ const Dashboard = () => {
         <div className="flex space-x-8 overflow-x-auto">
           {[
             { id: 'recruitment', label: 'Recruitment', icon: Users, description: 'Find members' },
+            { id: 'eventsCalendar', label: 'Events Calendar', icon: Calendar, description: 'View events calendar' },
             { id: 'events', label: 'Events', icon: Calendar, description: 'Manage events' },
             { id: 'calendar', label: 'Meetings', icon: Video, description: 'Schedule meetings' },
             { id: 'timetable', label: 'Schedule', icon: Clock, description: 'Organization schedule' },
@@ -603,7 +607,7 @@ const Dashboard = () => {
           ].map(({ id, label, icon: Icon, description }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id as 'recruitment' | 'events' | 'calendar' | 'timetable' | 'canteen')}
+              onClick={() => setActiveTab(id as 'recruitment' | 'eventsCalendar' | 'events' | 'calendar' | 'timetable' | 'canteen')}
               className={`flex items-center space-x-3 py-4 px-6 border-b-3 font-medium text-sm transition-all duration-300 relative group whitespace-nowrap ${
                 activeTab === id
                   ? 'border-purple-500 text-purple-600 bg-purple-50'
@@ -1156,9 +1160,44 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Events Tab */}
+        {/* Events Calendar Tab - Separate section for viewing calendar */}
+        {activeTab === 'eventsCalendar' && (
+          <div className="w-full space-y-6">
+            <div className="bg-white rounded-xl shadow-lg p-6 border border-purple-100">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Events Calendar</h2>
+              <p className="text-gray-600 mb-6">
+                View all your organization&apos;s events in a calendar format. Events created in the Events section will automatically appear here.
+              </p>
+              
+              {/* Events Calendar - Visual Overview */}
+              <OrganizationEventCalendar 
+                clubId={1}
+                onEventCreated={() => {
+                  console.log('Event created, refreshing data');
+                }}
+              />
+            </div>
+
+            {/* Calendar Upload Section */}
+            <div className="bg-white rounded-xl shadow-lg p-6 border border-purple-100">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Upload Calendar</h3>
+              <p className="text-gray-600 mb-4">
+                Upload your events calendar file to automatically populate the calendar with multiple events.
+              </p>
+              <CalendarUpload 
+                clubId={1} 
+                onEventsExtracted={(events) => {
+                  console.log('Extracted events:', events);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Events Tab - Create and manage events */}
         {activeTab === 'events' && (
-          <div className="w-full">
+          <div className="w-full space-y-6">
+            {/* Regular Event Management */}
             <EventManagement />
           </div>
         )}
@@ -1168,155 +1207,14 @@ const Dashboard = () => {
           <MeetingCalendar />
         )}
 
-        {/* Timetable Tab */}
+        {/* Timetable Tab - Club Event Timetable */}
         {activeTab === 'timetable' && (
-          <div className="space-y-8">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-8 text-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold mb-2">Organization Schedule</h2>
-                  <p className="text-blue-100">Meeting schedules and organization activities</p>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">12</div>
-                    <div className="text-blue-200 text-sm">Events/Week</div>
-                  </div>
-                  <div className="hidden md:block">
-                    <Clock className="w-16 h-16 text-white/20" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Weekly Schedule */}
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-              <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-6 border-b border-gray-100">
-                <h3 className="text-2xl font-bold text-gray-900 flex items-center">
-                  <Calendar className="w-6 h-6 text-blue-500 mr-3" />
-                  Weekly Organization Schedule
-                </h3>
-              </div>
-              <div className="p-6">
-                <div className="grid grid-cols-8 gap-4 mb-4">
-                  <div className="text-center font-semibold text-gray-900">Time</div>
-                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
-                    <div key={day} className="text-center font-semibold text-gray-900">{day}</div>
-                  ))}
-                </div>
-
-                {[
-                  { time: '9:00-11:00', activities: ['Team Meeting\nConference Room\nWeekly Planning', '', 'Workshop Prep\nActivity Hall\nEvent Planning', '', 'Recruitment Drive\nMain Campus\nStudent Outreach', 'Community Service\nOff-Campus\nSocial Initiative', ''] },
-                  { time: '11:00-1:00', activities: ['', 'Technical Training\nLab A-205\nSkill Development', '', 'Interview Sessions\nMeeting Room B\nCandidate Assessment', '', 'Event Execution\nVarious Venues\nActivity Coordination', ''] },
-                  { time: '2:00-4:00', activities: ['Project Review\nProject Hall\nProgress Assessment', 'Mentor Meeting\nFaculty Lounge\nGuidance Session', 'Creative Session\nDesign Studio\nContent Creation', 'Team Building\nOutdoor Area\nTeam Activities', 'Organization Fair\nMain Quad\nPromotion Drive', '', ''] },
-                  { time: '4:00-6:00', activities: ['', '', 'Event Planning\nPlanning Room\nStrategy Discussion', 'Alumni Connect\nAuditorium\nNetworking Session', 'Documentation\nOffice Space\nReport Writing', '', ''] },
-                  { time: '6:00-8:00', activities: ['', '', '', 'Evening Events\nEvent Venues\nExecutions', '', '', ''] }
-                ].map((slot, slotIndex) => (
-                  <div key={slotIndex} className="grid grid-cols-8 gap-4 mb-2">
-                    <div className="bg-gray-50 rounded-lg p-3 text-center font-medium text-gray-700">
-                      {slot.time}
-                    </div>
-                    {slot.activities.map((activity, dayIndex) => (
-                      <div
-                        key={dayIndex}
-                        className={`rounded-lg p-3 text-xs ${
-                          activity
-                            ? activity.includes('Meeting')
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : activity.includes('Workshop') || activity.includes('Training')
-                              ? 'bg-green-100 text-green-800 border border-green-200'
-                              : activity.includes('Event') || activity.includes('Fair')
-                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                              : activity.includes('Recruitment') || activity.includes('Interview')
-                              ? 'bg-orange-100 text-orange-800 border border-orange-200'
-                              : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-                            : 'bg-gray-50 text-gray-400'
-                        }`}
-                      >
-                        {activity ? (
-                          <div className="space-y-1">
-                            {activity.split('\n').map((line, lineIndex) => (
-                              <div
-                                key={lineIndex}
-                                className={
-                                  lineIndex === 0
-                                    ? 'font-semibold'
-                                    : lineIndex === 1
-                                    ? 'text-xs opacity-80'
-                                    : 'text-xs opacity-70'
-                                }
-                              >
-                                {line}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center">Free</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Upcoming Activities */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                  <Calendar className="w-5 h-5 text-blue-500 mr-2" />
-                  Upcoming Activities
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    { activity: 'Technical Workshop', date: 'Sep 15', time: '2:00 PM', priority: 'high' },
-                    { activity: 'Team Meeting', date: 'Sep 16', time: '9:00 AM', priority: 'medium' },
-                    { activity: 'Recruitment Drive', date: 'Sep 18', time: '9:00 AM', priority: 'high' },
-                    { activity: 'Alumni Connect', date: 'Sep 19', time: '4:00 PM', priority: 'medium' }
-                  ].map((item, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <div className="font-semibold text-gray-900">{item.activity}</div>
-                        <div className="text-sm text-gray-600">{item.date} at {item.time}</div>
-                      </div>
-                      <div className={`text-xs px-2 py-1 rounded-full ${
-                        item.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
-                      }`}>
-                        {item.priority} priority
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                  <Users className="w-5 h-5 text-green-500 mr-2" />
-                  Team Availability
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    { member: 'Core Team', availability: '9:00 AM - 6:00 PM', status: 'available' },
-                    { member: 'Tech Team', availability: '11:00 AM - 4:00 PM', status: 'busy' },
-                    { member: 'Creative Team', availability: '2:00 PM - 8:00 PM', status: 'available' },
-                    { member: 'Event Team', availability: '10:00 AM - 5:00 PM', status: 'available' }
-                  ].map((team, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <div className="font-semibold text-gray-900">{team.member}</div>
-                        <div className="text-sm text-gray-600">{team.availability}</div>
-                      </div>
-                      <div className={`text-xs px-2 py-1 rounded-full ${
-                        team.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {team.status}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div className="space-y-6">
+            <ClubTimetable 
+              clubId={1} 
+              clubName={user?.name || 'Your Organization'} 
+              isAdmin={true}
+            />
           </div>
         )}
 
